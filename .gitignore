@@ -1,0 +1,24 @@
+# Virtual environment (created by venv)
+Scripts/
+Lib/
+Include/
+pyvenv.cfg
+
+# Environment / secrets — never commit
+.env
+
+# Local SQLite database
+*.db
+*.sqlite3
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Temp scripts (Principle 10 pattern)
+_*.py
+
+# OS noise
+.DS_Store
+Thumbs.db
+

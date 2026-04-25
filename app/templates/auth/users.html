@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shepherd — Admin Users</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; padding: 2rem; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #fff; border-radius: 8px; padding: 1rem 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.25rem; color: #1a1a2e; }
+    .btn {
+      display: inline-block; padding: 0.45rem 1rem;
+      border-radius: 6px; font-size: 0.875rem; font-weight: 600;
+      text-decoration: none; cursor: pointer; border: none;
+    }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-ghost { color: #6b7280; }
+    .btn-ghost:hover { color: #111; }
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f9fafb; text-align: left; font-size: 0.75rem; text-transform: uppercase;
+         letter-spacing: .05em; color: #6b7280; padding: 0.75rem 1rem; }
+    td { padding: 0.85rem 1rem; font-size: 0.9rem; color: #374151; border-top: 1px solid #f3f4f6; }
+    tr:hover td { background: #fafafa; }
+    .badge { display:inline-block; padding: 0.2rem 0.55rem; border-radius: 99px;
+             font-size: 0.75rem; font-weight: 600; background:#e0e7ff; color:#3730a3; }
+    .alert { padding: 0.65rem 1rem; border-radius: 6px; font-size: 0.875rem; margin-bottom: 1rem; }
+    .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Admin Users</h1>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      <a href="{{ url_for('auth.dashboard') }}" class="btn btn-ghost">&larr; Dashboard</a>
+      <a href="{{ url_for('auth.new_user') }}" class="btn btn-primary">+ New User</a>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <button type="submit" class="btn btn-danger">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, msg in messages %}
+      <div class="alert alert-{{ category }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.id }}</td>
+          <td>
+            {{ user.username }}
+            {% if user.is_superuser %}
+              <span class="badge">superuser</span>
+            {% endif %}
+            {% if user.id == current_user.id %}
+              <span class="badge" style="background:#dcfce7;color:#166534;">you</span>
+            {% endif %}
+          </td>
+          <td>{{ user.email }}</td>
+          <td>{{ user.created_at.strftime('%d %b %Y') }}</td>
+          <td style="text-align:right;">
+            {% if user.id != current_user.id %}
+            <form method="post"
+                  action="{{ url_for('auth.delete_user', user_id=user.id) }}"
+                  onsubmit="return confirm('Delete user {{ user.username }}?')">
+              <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.3rem 0.7rem;">
+                Delete
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center;color:#9ca3af;">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

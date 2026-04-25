@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shepherd — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; padding: 2rem; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #fff; border-radius: 8px; padding: 1rem 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.25rem; color: #1a1a2e; }
+    .user { font-size: 0.875rem; color: #6b7280; }
+    form button {
+      padding: 0.4rem 0.9rem;
+      background: #ef4444; color: #fff;
+      border: none; border-radius: 6px;
+      font-size: 0.875rem; cursor: pointer;
+    }
+    form button:hover { background: #dc2626; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shepherd Dashboard</h1>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      <span class="user">Logged in as <strong>{{ current_user.username }}</strong></span>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <button type="submit">Logout</button>
+      </form>
+    </div>
+  </header>
+  <p style="color:#374151;">Welcome! The API is available at <code>/api/</code>.</p>
+  {% if current_user.is_superuser %}
+  <p style="margin-top:1rem;">
+    <a href="{{ url_for('auth.list_users') }}" style="color:#4f46e5;font-weight:600;">Manage Admin Users &rarr;</a>
+  </p>
+  {% endif %}
+</body>
+</html>
