@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
+from app.models.group import Group
 from app.models.user import User
 
 
@@ -75,6 +76,7 @@ class TestMembersCRUD(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         data = json.loads(resp.data)
         self.assertEqual(data["name"], "Alice Smith")
+        self.assertIsNone(data["group_id"])
         self.assertIn("id", data)
 
     def test_create_member_no_name_returns_400(self):
@@ -101,6 +103,18 @@ class TestMembersCRUD(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(json.loads(resp.data)["name"], "Bob Jones")
 
+    def test_create_member_with_group_assignment(self):
+        group = Group(name="Worship")
+        db.session.add(group)
+        db.session.commit()
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Assigned Member", "group_id": group.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(json.loads(resp.data)["group_id"], group.id)
+
     def test_get_member_not_found_returns_404(self):
         resp = self.client.get("/api/members/9999")
         self.assertEqual(resp.status_code, 404)
@@ -120,6 +134,26 @@ class TestMembersCRUD(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(json.loads(resp.data)["name"], "Carol Black")
+
+    def test_update_member_group_assignment_only_returns_200(self):
+        group = Group(name="Youth")
+        db.session.add(group)
+        db.session.commit()
+
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Member To Assign"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"group_id": group.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.data)["group_id"], group.id)
 
     def test_update_member_not_found_returns_404(self):
         resp = self.client.put(

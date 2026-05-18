@@ -20,10 +20,14 @@ class AttendanceService:
 
     @staticmethod
     def record(event_id: int, member_id: int, present: bool) -> tuple[Attendance | None, str | None]:
-        if not db.session.get(Event, event_id):
+        event = db.session.get(Event, event_id)
+        if not event:
             return None, f"Event {event_id} not found"
-        if not db.session.get(Member, member_id):
+        member = db.session.get(Member, member_id)
+        if not member:
             return None, f"Member {member_id} not found"
+        if member.group_id != event.group_id:
+            return None, "Member is not assigned to this event's group"
 
         record = Attendance(event_id=event_id, member_id=member_id, present=present)
         db.session.add(record)
@@ -33,6 +37,40 @@ class AttendanceService:
             db.session.rollback()
             return None, "Attendance already recorded for this member and event"
         return record, None
+
+    @staticmethod
+    def get_event_status(event_id: int) -> tuple[dict | None, str | None]:
+        event = db.session.get(Event, event_id)
+        if not event:
+            return None, f"Event {event_id} not found"
+
+        expected_members = db.session.execute(
+            db.select(Member).where(Member.group_id == event.group_id).order_by(Member.name)
+        ).scalars().all()
+        expected_member_ids = {m.id for m in expected_members}
+
+        present_records = db.session.execute(
+            db.select(Attendance).where(
+                Attendance.event_id == event_id,
+                Attendance.present.is_(True),
+            )
+        ).scalars().all()
+        present_member_ids = {r.member_id for r in present_records if r.member_id in expected_member_ids}
+
+        present_members = [m for m in expected_members if m.id in present_member_ids]
+        absent_members = [m for m in expected_members if m.id not in present_member_ids]
+
+        return {
+            "event_id": event.id,
+            "event_name": event.name,
+            "group_id": event.group_id,
+            "expected_count": len(expected_members),
+            "present_count": len(present_members),
+            "absent_count": len(absent_members),
+            "expected_members": [{"id": m.id, "name": m.name} for m in expected_members],
+            "present_members": [{"id": m.id, "name": m.name} for m in present_members],
+            "absent_members": [{"id": m.id, "name": m.name} for m in absent_members],
+        }, None
 
     @staticmethod
     def update(attendance_id: int, present: bool) -> Attendance | None:

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
+from app.models.group import Group
 from app.services.member_service import MemberService
 
 
@@ -35,7 +36,8 @@ class TestMemberService(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_create_returns_member(self):
-        member = MemberService.create(name="Alice")
+        member, error = MemberService.create(name="Alice")
+        self.assertIsNone(error)
         self.assertIsNotNone(member.id)
         self.assertEqual(member.name, "Alice")
 
@@ -46,7 +48,7 @@ class TestMemberService(unittest.TestCase):
         self.assertEqual(all_members[0].name, "Bob")
 
     def test_get_by_id_returns_member(self):
-        created = MemberService.create(name="Carol")
+        created, _ = MemberService.create(name="Carol")
         fetched = MemberService.get_by_id(created.id)
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched.name, "Carol")
@@ -56,16 +58,18 @@ class TestMemberService(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_update_changes_name(self):
-        member = MemberService.create(name="Old Name")
-        updated = MemberService.update(member.id, name="New Name")
+        member, _ = MemberService.create(name="Old Name")
+        updated, error = MemberService.update(member.id, name="New Name")
+        self.assertIsNone(error)
         self.assertEqual(updated.name, "New Name")
 
     def test_update_returns_none_for_missing(self):
-        result = MemberService.update(9999, name="Nobody")
+        result, error = MemberService.update(9999, name="Nobody")
         self.assertIsNone(result)
+        self.assertEqual(error, "Member not found")
 
     def test_delete_removes_member(self):
-        member = MemberService.create(name="Dave")
+        member, _ = MemberService.create(name="Dave")
         result = MemberService.delete(member.id)
         self.assertTrue(result)
         self.assertIsNone(MemberService.get_by_id(member.id))
@@ -80,6 +84,19 @@ class TestMemberService(unittest.TestCase):
         MemberService.create(name="Mike")
         names = [m.name for m in MemberService.get_all()]
         self.assertEqual(names, sorted(names))
+
+    def test_create_with_group_assignment(self):
+        group = Group(name="Worship")
+        db.session.add(group)
+        db.session.commit()
+        member, error = MemberService.create(name="Assigned", group_id=group.id)
+        self.assertIsNone(error)
+        self.assertEqual(member.group_id, group.id)
+
+    def test_create_invalid_group_returns_error(self):
+        member, error = MemberService.create(name="Bad Group", group_id=9999)
+        self.assertIsNone(member)
+        self.assertIsNotNone(error)
 
 
 if __name__ == "__main__":

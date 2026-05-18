@@ -29,6 +29,14 @@ def list_attendance():
     ])
 
 
+@bp.get("/event/<int:event_id>/status")
+def event_attendance_status(event_id: int):
+    status, error = AttendanceService.get_event_status(event_id)
+    if error:
+        return jsonify({"error": error}), 404
+    return jsonify(status)
+
+
 @bp.post("/")
 def record_attendance():
     data = request.get_json(silent=True) or {}

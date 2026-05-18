@@ -223,11 +223,12 @@ All API endpoints require authentication. Unauthenticated requests return `401 {
 
 | Endpoint | Methods | Description |
 |---|---|---|
-| `/api/members/` | GET, POST | List / create members |
-| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member |
+| `/api/members/` | GET, POST | List / create members (supports `group_id`) |
+| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member (supports `group_id` assignment) |
 | `/api/groups/` | GET, POST | List / create groups |
 | `/api/groups/<id>` | GET, PUT, DELETE | Get / update / delete a group |
 | `/api/events/` | GET, POST | List / create events |
 | `/api/events/<id>` | GET, DELETE | Get / delete an event |
 | `/api/attendance/` | GET, POST | List / record attendance |
 | `/api/attendance/<id>` | PUT, DELETE | Update / delete an attendance record |
+| `/api/attendance/event/<id>/status` | GET | Attendance summary (expected/present/absent by event group) |
