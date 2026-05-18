@@ -10,7 +10,7 @@ class Member(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
-    group_id = db.Column(db.Integer, db.ForeignKey("groups.id"), nullable=True)
+    group_id = db.Column(db.Integer, db.ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     group = db.relationship("Group", back_populates="members")

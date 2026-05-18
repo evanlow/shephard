@@ -18,13 +18,17 @@ def create_app(env: str = "development") -> Flask:
 
     @login_manager.user_loader
     def load_user(user_id: str):
-        return db.session.get(User, int(user_id))
+        try:
+            return db.session.get(User, int(user_id))
+        except (TypeError, ValueError):
+            return None
 
     @login_manager.unauthorized_handler
     def unauthorized():
         if request.path.startswith("/api/"):
             return jsonify({"error": "Authentication required"}), 401
-        return redirect(url_for(login_manager.login_view, next=request.url))
+        next_path = request.full_path if request.query_string else request.path
+        return redirect(url_for(login_manager.login_view, next=next_path))
 
     @app.errorhandler(403)
     def forbidden_template(_error):
@@ -82,7 +86,10 @@ def create_app(env: str = "development") -> Flask:
         db.session.commit()
         print(f"Superuser '{username}' created.")
 
-    with app.app_context():
-        db.create_all()
+    @app.cli.command("init-db")
+    def init_db():
+        with app.app_context():
+            db.create_all()
+        print("Database tables created.")
 
     return app

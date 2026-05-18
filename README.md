@@ -45,13 +45,17 @@ Copy-Item .env.example .env
 # Edit .env and set SECRET_KEY to a strong random value:
 python -c "import secrets; print(secrets.token_hex(32))"
 
-# 4. Start the development server
+# 4. Initialize database tables
+$env:FLASK_APP = "run.py"
+flask init-db
+
+# 5. Start the development server
 python run.py
 ```
 
 The app is available at **http://127.0.0.1:5000**
 
-Tables are created automatically on first launch — no migration step required.
+Run `flask init-db` when setting up a new database. Schema upgrades should be handled explicitly.
 
 ---
 
@@ -81,7 +85,7 @@ shepherd/
 │   └── templates/           # Jinja2 HTML templates
 ├── tests/
 │   ├── run_all_smoke.py     # Smoke test runner
-│   └── smoke_*.py           # Smoke test files (112 tests)
+│   └── smoke_*.py           # Smoke test files (123 tests)
 ├── config.py                # Development / Testing / Production config
 ├── run.py                   # App entry point
 ├── requirements.txt
@@ -118,7 +122,7 @@ Query parameters:
 .\venv\Scripts\python.exe tests/run_all_smoke.py
 ```
 
-Expected output: `112 passed, 0 failed` across 9 smoke test files.
+Expected output: `123 passed, 0 failed` across 9 smoke test files.
 
 ---
 

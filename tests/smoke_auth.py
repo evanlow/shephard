@@ -108,6 +108,19 @@ class TestDashboard(unittest.TestCase):
         resp = self.client.get("/dashboard")
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/login", resp.headers["Location"])
+        self.assertIn("next=/dashboard", resp.headers["Location"])
+
+    def test_dashboard_requires_auth_preserves_relative_query_next(self):
+        resp = self.client.get("/dashboard?tab=weekly")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("next=/dashboard?tab%3Dweekly", resp.headers["Location"])
+
+    def test_invalid_session_user_id_treated_as_anonymous(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "not-an-int"
+        resp = self.client.get("/dashboard")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
 
     def test_dashboard_accessible_when_logged_in(self):
         self.client.post("/login", data={"username": "admin", "password": "password123"})

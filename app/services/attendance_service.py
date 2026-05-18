@@ -49,13 +49,15 @@ class AttendanceService:
         ).scalars().all()
         expected_member_ids = {m.id for m in expected_members}
 
-        present_records = db.session.execute(
-            db.select(Attendance).where(
-                Attendance.event_id == event_id,
-                Attendance.present.is_(True),
-            )
-        ).scalars().all()
-        present_member_ids = {r.member_id for r in present_records if r.member_id in expected_member_ids}
+        present_member_ids = set(
+            db.session.execute(
+                db.select(Attendance.member_id).where(
+                    Attendance.event_id == event_id,
+                    Attendance.present.is_(True),
+                    Attendance.member_id.in_(expected_member_ids),
+                )
+            ).scalars().all()
+        )
 
         present_members = [m for m in expected_members if m.id in present_member_ids]
         absent_members = [m for m in expected_members if m.id not in present_member_ids]

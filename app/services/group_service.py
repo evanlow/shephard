@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..extensions import db
 from ..models.group import Group
+from ..models.member import Member
 
 
 class GroupService:
@@ -37,6 +38,11 @@ class GroupService:
         group = db.session.get(Group, group_id)
         if not group:
             return False
+        members = db.session.execute(
+            db.select(Member).where(Member.group_id == group_id)
+        ).scalars().all()
+        for member in members:
+            member.group_id = None
         db.session.delete(group)
         db.session.commit()
         return True
