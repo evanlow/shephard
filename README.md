@@ -33,8 +33,8 @@ A church attendance management system built with Flask.
 **Prerequisites:** Python 3.11+
 
 ```powershell
-# 1. Activate the virtual environment
-.\Scripts\activate
+# 1. Activate the virtual environment (create with: python -m venv venv)
+.\venv\Scripts\activate
 
 # 2. Install dependencies
 pip install -r requirements.txt
@@ -113,7 +113,7 @@ Query parameters:
 ## Running the Tests
 
 ```powershell
-.\Scripts\python.exe tests/run_all_smoke.py
+.\venv\Scripts\python.exe tests/run_all_smoke.py
 ```
 
 Expected output: `112 passed, 0 failed` across 9 smoke test files.

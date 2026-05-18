@@ -1,8 +1,6 @@
-# Virtual environment (created by venv)
-Scripts/
-Lib/
-Include/
-pyvenv.cfg
+# Virtual environment
+venv/
+.venv/
 
 # Environment / secrets — never commit
 .env
