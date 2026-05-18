@@ -37,12 +37,13 @@ class TestAttendanceService(unittest.TestCase):
         event = Event(name="Test Event", date=datetime(2026, 6, 1, 10, 0), group_id=group.id)
         db.session.add(event)
 
-        member = Member(name="Test Member")
+        member = Member(name="Test Member", group_id=group.id)
         db.session.add(member)
 
         db.session.commit()
         self.event_id = event.id
         self.member_id = member.id
+        self.group_id = group.id
 
     def tearDown(self):
         db.session.remove()
@@ -128,6 +129,34 @@ class TestAttendanceService(unittest.TestCase):
 
     def test_delete_returns_false_for_missing(self):
         self.assertFalse(AttendanceService.delete(9999))
+
+    def test_record_member_not_in_event_group_returns_error(self):
+        other_group = Group(name="Other Group")
+        db.session.add(other_group)
+        db.session.flush()
+        outsider = Member(name="Outsider", group_id=other_group.id)
+        db.session.add(outsider)
+        db.session.commit()
+
+        record, error = AttendanceService.record(
+            event_id=self.event_id, member_id=outsider.id, present=True
+        )
+        self.assertIsNone(record)
+        self.assertIsNotNone(error)
+
+    def test_get_event_status_expected_present_absent(self):
+        second_member = Member(name="Second Member", group_id=self.group_id)
+        db.session.add(second_member)
+        db.session.commit()
+        AttendanceService.record(
+            event_id=self.event_id, member_id=self.member_id, present=True
+        )
+
+        status, error = AttendanceService.get_event_status(self.event_id)
+        self.assertIsNone(error)
+        self.assertEqual(status["expected_count"], 2)
+        self.assertEqual(status["present_count"], 1)
+        self.assertEqual(status["absent_count"], 1)
 
 
 if __name__ == "__main__":

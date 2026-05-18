@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
+from app.models.member import Member
 from app.services.group_service import GroupService
 
 
@@ -77,6 +78,16 @@ class TestGroupService(unittest.TestCase):
 
     def test_delete_returns_false_for_missing(self):
         self.assertFalse(GroupService.delete(9999))
+
+    def test_delete_unassigns_members_before_group_removal(self):
+        group = GroupService.create(name="Member Group")
+        member = Member(name="Alice", group_id=group.id)
+        db.session.add(member)
+        db.session.commit()
+
+        self.assertTrue(GroupService.delete(group.id))
+        db.session.refresh(member)
+        self.assertIsNone(member.group_id)
 
     def test_get_all_returns_groups_alphabetically(self):
         GroupService.create(name="Zion")

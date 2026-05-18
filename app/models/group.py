@@ -14,6 +14,7 @@ class Group(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     events = db.relationship("Event", back_populates="group", cascade="all, delete-orphan")
+    members = db.relationship("Member", back_populates="group", passive_deletes=True)
 
     def __repr__(self) -> str:
         return f"<Group {self.name}>"

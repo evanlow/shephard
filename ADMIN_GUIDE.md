@@ -51,13 +51,17 @@ Paste the output as the value of `SECRET_KEY` in `.env`.
 # Activate the venv (if not already active)
 .\venv\Scripts\activate
 
+# Initialize database tables (new database setup)
+$env:FLASK_APP = "run.py"
+flask init-db
+
 # Start the development server
 python run.py
 ```
 
 The app will be available at **http://127.0.0.1:5000**
 
-> **Note:** `db.create_all()` runs automatically on startup, so all database tables are created on first launch — no migration step required for development.
+> **Note:** Run `flask init-db` for new database setup. For schema changes, use an explicit migration/upgrade step.
 
 ---
 
@@ -196,7 +200,13 @@ Configure these in your `.env` file (copied from `.env.example`).
    CREATE DATABASE shepherd;
    ```
 
-4. Start the app — tables will be created automatically on first launch.
+4. Initialize tables:
+   ```powershell
+   $env:FLASK_APP = "run.py"
+   flask init-db
+   ```
+
+5. Start the app.
 
 > For production deployments, also set `FLASK_ENV=production` and ensure `SECRET_KEY` is a strong random value.
 
@@ -223,11 +233,12 @@ All API endpoints require authentication. Unauthenticated requests return `401 {
 
 | Endpoint | Methods | Description |
 |---|---|---|
-| `/api/members/` | GET, POST | List / create members |
-| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member |
+| `/api/members/` | GET, POST | List / create members (supports `group_id`) |
+| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member (supports `group_id` assignment) |
 | `/api/groups/` | GET, POST | List / create groups |
 | `/api/groups/<id>` | GET, PUT, DELETE | Get / update / delete a group |
 | `/api/events/` | GET, POST | List / create events |
 | `/api/events/<id>` | GET, DELETE | Get / delete an event |
 | `/api/attendance/` | GET, POST | List / record attendance |
 | `/api/attendance/<id>` | PUT, DELETE | Update / delete an attendance record |
+| `/api/attendance/event/<id>/status` | GET | Attendance summary (expected/present/absent by event group) |

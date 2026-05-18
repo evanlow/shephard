@@ -70,12 +70,13 @@ class TestAttendanceCRUD(unittest.TestCase):
         event = Event(name="Test Event", date=datetime(2026, 6, 1, 10, 0), group_id=group.id)
         db.session.add(event)
 
-        member = Member(name="Test Member")
+        member = Member(name="Test Member", group_id=group.id)
         db.session.add(member)
 
         db.session.commit()
         self.event_id = event.id
         self.member_id = member.id
+        self.group_id = group.id
 
     def tearDown(self):
         db.session.remove()
@@ -185,6 +186,30 @@ class TestAttendanceCRUD(unittest.TestCase):
     def test_delete_attendance_not_found_returns_404(self):
         resp = self.client.delete("/api/attendance/9999")
         self.assertEqual(resp.status_code, 404)
+
+    def test_record_member_not_in_event_group_returns_400(self):
+        other_group = Group(name="Other Group")
+        db.session.add(other_group)
+        db.session.flush()
+        outsider = Member(name="Outsider", group_id=other_group.id)
+        db.session.add(outsider)
+        db.session.commit()
+
+        resp = self._record(member_id=outsider.id)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_event_status_returns_expected_present_absent(self):
+        second_member = Member(name="Second Member", group_id=self.group_id)
+        db.session.add(second_member)
+        db.session.commit()
+        self._record(member_id=self.member_id, present=True)
+
+        resp = self.client.get(f"/api/attendance/event/{self.event_id}/status")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(data["expected_count"], 2)
+        self.assertEqual(data["present_count"], 1)
+        self.assertEqual(data["absent_count"], 1)
 
 
 if __name__ == "__main__":

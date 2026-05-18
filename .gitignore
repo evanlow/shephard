@@ -15,8 +15,8 @@ __pycache__/
 
 # Temp scripts (Principle 10 pattern)
 _*.py
+!**/__init__.py
 
 # OS noise
 .DS_Store
 Thumbs.db
-
