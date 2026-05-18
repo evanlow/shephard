@@ -23,8 +23,9 @@
 **Prerequisites:** Python 3.11+
 
 ```powershell
-# 1. Activate the virtual environment
-.\Scripts\activate
+# 1. Create and activate the virtual environment
+python -m venv venv
+.\venv\Scripts\activate
 
 # 2. Install dependencies
 pip install -r requirements.txt
@@ -48,7 +49,7 @@ Paste the output as the value of `SECRET_KEY` in `.env`.
 
 ```powershell
 # Activate the venv (if not already active)
-.\Scripts\activate
+.\venv\Scripts\activate
 
 # Start the development server
 python run.py
