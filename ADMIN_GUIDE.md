@@ -23,7 +23,8 @@
 **Prerequisites:** Python 3.11+
 
 ```powershell
-# 1. Activate the virtual environment (create with: python -m venv venv)
+# 1. Create and activate the virtual environment
+python -m venv venv
 .\venv\Scripts\activate
 
 # 2. Install dependencies
