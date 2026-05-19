@@ -1,13 +1,13 @@
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 
+from ..routes.auth import admin_required, superuser_required
 from ..services.member_service import MemberService
 
 bp = Blueprint("members", __name__)
 
 
 @bp.before_request
-@login_required
+@admin_required
 def protect():
     pass
 
@@ -66,6 +66,7 @@ def update_member(member_id: int):
 
 
 @bp.delete("/<int:member_id>")
+@superuser_required
 def delete_member(member_id: int):
     deleted = MemberService.delete(member_id)
     if not deleted:

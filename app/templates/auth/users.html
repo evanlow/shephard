@@ -74,6 +74,8 @@
             {{ user.username }}
             {% if user.is_superuser %}
               <span class="badge">superuser</span>
+            {% elif user.is_admin %}
+              <span class="badge" style="background:#e0f2fe;color:#0369a1;">admin</span>
             {% endif %}
             {% if user.id == current_user.id %}
               <span class="badge" style="background:#dcfce7;color:#166534;">you</span>

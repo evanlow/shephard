@@ -19,7 +19,7 @@ class AttendanceService:
         return db.session.execute(stmt).scalars().all()
 
     @staticmethod
-    def record(event_id: int, member_id: int, present: bool) -> tuple[Attendance | None, str | None]:
+    def record(event_id: int, member_id: int, present: bool, marked_by: int | None = None) -> tuple[Attendance | None, str | None]:
         event = db.session.get(Event, event_id)
         if not event:
             return None, f"Event {event_id} not found"
@@ -29,7 +29,7 @@ class AttendanceService:
         if member.group_id != event.group_id:
             return None, "Member is not assigned to this event's group"
 
-        record = Attendance(event_id=event_id, member_id=member_id, present=present)
+        record = Attendance(event_id=event_id, member_id=member_id, present=present, marked_by=marked_by)
         db.session.add(record)
         try:
             db.session.commit()

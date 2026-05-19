@@ -1,15 +1,15 @@
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 
+from ..routes.auth import admin_required, superuser_required
 from ..services.event_service import EventService
 
 bp = Blueprint("events", __name__)
 
 
 @bp.before_request
-@login_required
+@admin_required
 def protect():
     pass
 
@@ -65,6 +65,7 @@ def get_event(event_id: int):
 
 
 @bp.delete("/<int:event_id>")
+@superuser_required
 def delete_event(event_id: int):
     deleted = EventService.delete(event_id)
     if not deleted:

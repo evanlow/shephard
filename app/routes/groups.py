@@ -1,13 +1,13 @@
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 
+from ..routes.auth import admin_required, superuser_required
 from ..services.group_service import GroupService
 
 bp = Blueprint("groups", __name__)
 
 
 @bp.before_request
-@login_required
+@admin_required
 def protect():
     pass
 
@@ -51,6 +51,7 @@ def update_group(group_id: int):
 
 
 @bp.delete("/<int:group_id>")
+@superuser_required
 def delete_group(group_id: int):
     deleted = GroupService.delete(group_id)
     if not deleted:
