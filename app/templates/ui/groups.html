@@ -1,0 +1,86 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Groups{% endblock %}
+{% block nav_groups %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Groups / Classes</h2>
+  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#addGroupForm">
+    + Add Group
+  </button>
+</div>
+
+<!-- Add group form (collapsed by default) -->
+<div class="collapse mb-4" id="addGroupForm">
+  <div class="card card-body">
+    <h5 class="mb-3">Create New Group</h5>
+    <form method="post" action="{{ url_for('ui.create_group') }}">
+      <div class="row g-3">
+        <div class="col-sm-4">
+          <label class="form-label">Group Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Worship Service" required />
+        </div>
+        <div class="col-sm-5">
+          <label class="form-label">Description</label>
+          <input type="text" name="description" class="form-control" placeholder="Optional description" />
+        </div>
+        <div class="col-sm-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-success w-100">Create Group</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Groups table -->
+<div class="card">
+  <div class="card-header">
+    <span class="text-muted small">{{ groups_data|length }} group{{ 's' if groups_data|length != 1 else '' }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Members</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in groups_data %}
+        <tr>
+          <td class="text-muted small">{{ loop.index }}</td>
+          <td class="fw-semibold">{{ item.group.name }}</td>
+          <td class="text-muted">{{ item.group.description or '—' }}</td>
+          <td>
+            <a href="{{ url_for('ui.members') }}" class="badge bg-secondary text-decoration-none">
+              {{ item.member_count }} member{{ 's' if item.member_count != 1 else '' }}
+            </a>
+          </td>
+          <td>
+            <a href="{{ url_for('ui.edit_group', group_id=item.group.id) }}"
+               class="btn btn-sm btn-outline-primary me-1">Rename</a>
+            {% if current_user.is_superuser %}
+            <form method="post" action="{{ url_for('ui.delete_group', group_id=item.group.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('Delete group \'{{ item.group.name }}\'?\nMembers will be unassigned but not deleted.');">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No groups yet. Click <strong>+ Add Group</strong> to get started.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

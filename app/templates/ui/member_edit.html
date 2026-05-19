@@ -1,0 +1,39 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Edit Member{% endblock %}
+{% block nav_members %}active{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{{ url_for('ui.members') }}" class="text-decoration-none">&larr; Back to Members</a>
+</div>
+
+<div class="card" style="max-width: 480px;">
+  <div class="card-header">
+    <h5 class="mb-0">Edit Member</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('ui.update_member', member_id=member.id) }}">
+      <div class="mb-3">
+        <label class="form-label">Name <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" value="{{ member.name }}" required />
+      </div>
+      <div class="mb-4">
+        <label class="form-label">Group</label>
+        <select name="group_id" class="form-select">
+          <option value="0">— No group —</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}" {% if member.group_id == g.id %}selected{% endif %}>
+            {{ g.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="{{ url_for('ui.members') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

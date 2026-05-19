@@ -1,0 +1,117 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Events{% endblock %}
+{% block nav_events %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Events / Services</h2>
+  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#addEventForm">
+    + Add Event
+  </button>
+</div>
+
+<!-- Add event form -->
+<div class="collapse mb-4" id="addEventForm">
+  <div class="card card-body">
+    <h5 class="mb-3">Create New Event</h5>
+    {% if not groups %}
+    <div class="alert alert-warning mb-3">
+      You need at least one <a href="{{ url_for('ui.groups') }}">Group</a> before creating an event.
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('ui.create_event') }}">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Event Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control"
+                 placeholder="e.g. Worship Service — 8AM" required />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Group <span class="text-danger">*</span></label>
+          <select name="group_id" class="form-select" required>
+            <option value="">— Select group —</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}">{{ g.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Date &amp; Time <span class="text-danger">*</span></label>
+          <input type="datetime-local" name="date" class="form-control" required />
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-success w-100" {% if not groups %}disabled{% endif %}>
+            Create Event
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Events table -->
+<div class="card">
+  <div class="card-header d-flex align-items-center gap-2">
+    <input type="text" id="eventSearch" class="form-control form-control-sm w-auto flex-grow-1"
+           placeholder="Search events…" />
+    <span class="text-muted small">{{ events|length }} event{{ 's' if events|length != 1 else '' }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" id="eventsTable">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Event Name</th>
+          <th>Group</th>
+          <th>Date &amp; Time</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td class="text-muted small">{{ loop.index }}</td>
+          <td class="event-name fw-semibold">{{ e.name }}</td>
+          <td>
+            <span class="badge bg-info text-dark">{{ e.group.name if e.group else '—' }}</span>
+          </td>
+          <td class="text-muted small">{{ e.date.strftime('%d %b %Y, %H:%M') }}</td>
+          <td>
+            <a href="{{ url_for('ui.attendance', event_id=e.id) }}"
+               class="btn btn-sm btn-primary me-1">Take Attendance</a>
+            <a href="{{ url_for('ui.reports') }}?event_id={{ e.id }}"
+               class="btn btn-sm btn-outline-secondary me-1">Report</a>
+            {% if current_user.is_superuser %}
+            <form method="post" action="{{ url_for('ui.delete_event', event_id=e.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('Delete event \'{{ e.name }}\'?\nAll attendance records will also be deleted.');">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No events yet. Click <strong>+ Add Event</strong> to get started.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('eventSearch').addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#eventsTable tbody tr').forEach(row => {
+      const name = (row.querySelector('.event-name') || {}).textContent || '';
+      row.style.display = name.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}
