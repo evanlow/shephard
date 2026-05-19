@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 
 from ..routes.auth import admin_required, superuser_required
 from ..services.event_service import EventService

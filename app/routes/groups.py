@@ -1,5 +1,4 @@
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 
 from ..routes.auth import admin_required, superuser_required
 from ..services.group_service import GroupService

@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required
+from flask_login import current_user
 
 from ..routes.auth import admin_required
 from ..services.attendance_service import AttendanceService

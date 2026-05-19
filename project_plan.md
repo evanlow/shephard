@@ -155,10 +155,11 @@ When deploying to production:
 2. Set `SECRET_KEY` to a strong random value — `python -c "import secrets; print(secrets.token_hex(32))"`.
 3. Set `FLASK_ENV=production`.
 4. Run `flask init-db` to create schema on first deploy.
-5. Run `flask create-admin` to create the first superuser.
-6. Configure Nginx as reverse proxy with HTTPS (Let's Encrypt or AWS ACM).
-7. Run the app with Gunicorn: `gunicorn -w 4 run:app`.
-8. Restrict RDS security group to EC2 instance only.
+5. For existing databases, run a schema migration/upgrade step before deploy (e.g., Alembic/Flask-Migrate `upgrade head`); do not rely on `flask init-db` to apply schema changes.
+6. Run `flask create-admin` to create the first superuser.
+7. Configure Nginx as reverse proxy with HTTPS (Let's Encrypt or AWS ACM).
+8. Run the app with Gunicorn: `gunicorn -w 4 run:app`.
+9. Restrict RDS security group to EC2 instance only.
 
 ---
 
