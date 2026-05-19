@@ -1,6 +1,6 @@
 # Prime Directive: Development Guidelines
 
-**Last Updated:** April 8, 2026  
+**Last Updated:** April 27, 2026  
 **Purpose:** Ensure high-quality, maintainable code by learning from past experiences and establishing best practices for all team members, AI agents, and contributors.
 
 **Scope:** This directive is designed for use across all software projects. Project-specific case studies and stack/tool profiles are explicitly labeled as optional examples.
@@ -14,6 +14,8 @@ Pre-Commit Checklist:
 □ Virtual environment active (Principle 0)
 □ Every new/modified module has a smoke test file (Principle 1 — Coverage Rule)
 □ Full regression suite passes: .\Scripts\python.exe tests/run_all_smoke.py — X/X passed, 0 failures (Principle 1) [run via run_in_terminal — never via execution_subagent (Principle 9)]
+□ No secrets or credentials in the diff (Principle 12)
+□ Change is on a feature branch, not directly on main (Principle 13)
 
 For Backend-Only Changes:
 □ Tests added/updated for new code
@@ -31,6 +33,10 @@ For UI Changes (HTML/CSS/JavaScript):
 □ Any strange behavior investigated (Principle 8)
 □ Manual testing documented in commit message
 □ No Python code with braces/f-strings passed via PowerShell -c (Principle 10)
+□ Every new/modified API endpoint has a test (Principle 1 — Route Coverage Rule)
+□ Every new mock enforces argument types with assert/isinstance (Principle 11)
+□ At least one test for each "adopt/create/instantiate" flow uses the real class (Principle 11)
+□ Any CDN integrity hash computed fresh from live URL — never copied from docs or memory (Principle 14)
 → Ready to commit
 
 Session Log Cadence (Mandatory):
@@ -114,7 +120,7 @@ Every project must maintain a dedicated session log file at repository root:
 **Minimum entry fields:**
 
 1. Date and session identifier
-2. Directive Compliance KPI score (`X/6 green`)
+2. Directive Compliance KPI score (`X/8 green`)
 3. Green/Yellow/Red breakdown with reasons
 4. Checkpoint type and trigger event
 5. KPI delta since previous entry
@@ -134,8 +140,8 @@ Every project must maintain a dedicated session log file at repository root:
 ### Example Status Update
 
 ```markdown
-Directive Compliance KPI: 5/7 green
-- Green: #1, #2, #3, #5, #7
+Directive Compliance KPI: 6/8 green
+- Green: #1, #2, #3, #5, #7, #8
 - Yellow: #4 (awaiting post-change test run), #6 (no form input changes yet)
 - Red: none
 ```
@@ -331,6 +337,19 @@ Never redirect output to an assumed absolute path (e.g., `C:\Temp`) — the dire
 - **Integration:** Test complete workflows end-to-end
 - **Error handling:** Test invalid inputs return proper errors
 - **Minimum coverage:** 70%+ for new features, 90%+ for critical paths
+
+**Route Coverage Rule (Non-Negotiable):**
+Every new or modified API endpoint **must** have corresponding tests committed in the **same** change.
+
+| Required test | What it covers |
+|---|---|
+| Happy path → 200 + correct response shape | Confirms endpoint is reachable and returns expected data |
+| Missing required fields → 400 | Confirms input validation is enforced |
+| Unknown/invalid values → 400/404 | Confirms error handling is correct |
+| "Adopt / Create / Instantiate" flow → uses **real** domain class | Catches constructor-level crashes; `Mock()` cannot substitute here |
+
+**Adopt-flow test rule:**
+Any endpoint that internally calls `__init__` on a domain object (e.g., `POST /api/strategies/create`) must have at least one integration test that instantiates the **real** class — not a `Mock()`. Only real instantiation will catch attribute errors, missing imports, or wrong event-bus API calls at test time.
 
 **Warning Policy:**
 - Warnings are NOT acceptable - they must be investigated and resolved
@@ -1261,6 +1280,301 @@ Always `Remove-Item` the temp file immediately after use.
 
 ---
 
+### 11. **Mock Fidelity — Mocks Must Enforce the Real Interface**
+**CRITICAL:** A mock that doesn't replicate the real class's contract gives false confidence. Tests pass; production crashes.
+
+**The Rule:**
+Every mock of a collaborator must:
+1. Call the same methods in the same way the real class does
+2. Assert argument *types*, not just values
+3. Raise on violations — never silently accept wrong types
+
+**The Anti-Pattern (what caused the Adopt-button bug, April 2026):**
+```python
+# ❌ BAD — swallows everything silently; strings are valid dict keys so no error fires
+class MockEventBus:
+    def subscribe(self, event_type, callback):
+        self.subscriptions[event_type] = ...  # "MARKET_DATA" string works here!
+```
+`BaseStrategy._subscribe_to_events` was passing raw strings (`"MARKET_DATA"`) instead of
+`EventType` enum members. Because the mock accepted strings without complaint, every unit test
+passed — but every real instantiation crashed with `AttributeError: 'str' object has no attribute 'name'`.
+
+**The Correct Pattern:**
+```python
+# ✅ GOOD — enforces the same contract as the real EventBus
+from core.event_bus import Event, EventType
+
+class MockEventBus:
+    def __init__(self):
+        self.subscriptions = {}
+        self.published_events = []
+
+    def subscribe(self, event_type: EventType, callback):
+        assert isinstance(event_type, EventType), (
+            f"subscribe() requires EventType, got {type(event_type).__name__!r}"
+        )
+        self.subscriptions.setdefault(event_type, []).append(callback)
+
+    def publish(self, event: Event):
+        assert isinstance(event, Event), (
+            f"publish() requires Event, got {type(event).__name__!r}"
+        )
+        self.published_events.append(event)
+        for cb in self.subscriptions.get(event.event_type, []):
+            cb(event.data)
+```
+
+**Prefer real classes over mocks when possible:**
+If the real class has no side effects (no network, no disk, no heavy setup), use it directly.
+Reserve mocks for classes with I/O or expensive setup. `EventBus` is a pure in-memory object —
+use the real one in registry and strategy tests.
+
+**`unittest.mock.Mock()` is a last resort:**
+`Mock()` accepts any call and returns `Mock` for any attribute. It validates nothing. Use it only
+when the collaborator's interface is deliberately irrelevant to the specific test being written.
+
+**Regression test requirement:**
+Every mock that enforces types must have a corresponding **negative test** — a test that passes
+the wrong type and asserts it raises. This locks the enforcement in place against future refactors.
+
+```python
+def test_mock_event_bus_enforces_types():
+    """Verify MockEventBus raises on wrong argument types."""
+    bus = MockEventBus()
+
+    # Wrong type for subscribe — must raise, not silently key by string
+    with pytest.raises(AssertionError):
+        bus.subscribe("MARKET_DATA", lambda e: None)
+
+    # Wrong type for publish — must raise, not silently append string
+    with pytest.raises((AssertionError, AttributeError)):
+        bus.publish("SIGNAL_GENERATED")
+```
+
+**❌ Never:**
+- Use `Mock()` for a collaborator whose interface is the thing being tested
+- Write a mock that accepts raw strings/ints where the real class demands typed objects
+- Assert only that a key *exists* in `mock.subscriptions` without checking its type
+
+**✅ Always:**
+- Add `isinstance` assertions inside mock methods for all arguments with a documented type
+- Write at least one **negative test**: pass the wrong type and assert it raises
+- Prefer the real class when it has no side effects
+- If a `Mock()`-based test passes but production crashes, the mock is lying — fix the mock
+
+#### Incident: April 2026
+
+**What happened:**
+`BaseStrategy._subscribe_to_events` passed raw strings to `EventBus.subscribe()`, which calls
+`event_type.name`. `MockEventBus` silently keyed by those strings. All 50+ strategy unit tests
+passed; every `POST /api/strategies/create` call (the "Adopt" button) raised `AttributeError`.
+
+**Root causes:**
+1. `MockEventBus` accepted any hashable key — strings appeared equivalent to `EventType` members
+2. `POST /api/strategies/create` had no test at all (Route Coverage Rule violation)
+3. Registry tests used bare `Mock()` which swallowed every wrong-type call silently
+
+**Time to diagnose:** ~30 minutes. Time to prevent with this principle: ~2 minutes (add `isinstance` assert and one `POST /create` test).
+
+---
+
+### 12. **Secrets & Credentials Management — Never Commit Secrets**
+**CRITICAL:** Credentials, API keys, tokens, and passwords committed to version control are permanently exposed — even after deletion, the history remains. This is one of the most common and damaging security mistakes.
+
+**The Rule:**
+Never commit secrets to version control. Ever. Not even temporarily.
+
+**What counts as a secret:**
+- API keys and tokens (broker keys, OpenAI keys, third-party service keys)
+- Passwords and database connection strings
+- Private keys and certificates
+- OAuth client secrets
+- Webhook signing secrets
+- Any value your code uses to authenticate to an external service
+
+**The Correct Pattern:**
+```python
+# ✅ CORRECT — load secrets from environment variables
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Loads from .env file (which is in .gitignore!)
+
+API_KEY = os.environ["BROKER_API_KEY"]       # Raises KeyError if missing — catches misconfiguration
+DB_URL = os.environ.get("DATABASE_URL", "")  # Returns empty string if missing
+
+# ❌ WRONG — hardcoded credential
+API_KEY = "sk-abc123realkey..."  # Never!
+DB_URL = "postgresql://admin:password@prod-server/db"  # Never!
+```
+
+**Project Setup (Mandatory for every project):**
+```bash
+# Step 1: Create .env file for local secrets (never commit this)
+# .env
+BROKER_API_KEY=your_key_here
+DATABASE_URL=postgresql://localhost/mydb
+
+# Step 2: Create .env.example with placeholder values (SAFE to commit)
+# .env.example
+BROKER_API_KEY=your_broker_api_key_here
+DATABASE_URL=postgresql://localhost/mydb
+
+# Step 3: Ensure .gitignore includes .env
+echo ".env" >> .gitignore
+```
+
+**If a Secret Is Accidentally Committed:**
+1. **Rotate the credential immediately** — assume it is compromised
+2. Remove the secret from the codebase
+3. Force-push is NOT sufficient — git history retains it
+4. Use `git filter-branch` or BFG Repo Cleaner to scrub history
+5. Notify the service provider if the secret controls external access
+
+**❌ Never:**
+- Commit `.env` files containing real credentials
+- Hardcode secrets in source code, even in "dev" branches
+- Log or print secret values (they end up in log files)
+- Share secrets via chat messages, email, or tickets
+- Assume a private repository is safe for committing credentials
+
+**✅ Always:**
+- Use `.env` for local development secrets (with `.env` in `.gitignore`)
+- Commit `.env.example` with placeholder values to document required keys
+- Use environment variables in CI/CD pipelines and production deployments
+- Rotate any credential that may have been exposed
+- Check for secret leaks before every PR merge (use tools like `git-secrets` or GitHub secret scanning)
+
+---
+
+### 13. **Git Branching & Code Review — Protect the Main Branch**
+**CRITICAL:** Committing untested or unreviewed code directly to `main` bypasses quality gates and introduces regressions that affect everyone. Every change must be isolated and reviewed before merging.
+
+**The Branching Model:**
+```
+main          ← production-ready only; never commit directly here
+  └─ feature/my-feature     ← all new work starts here
+  └─ fix/bug-description    ← bug fixes
+  └─ chore/dependency-update ← maintenance tasks
+```
+
+**Branch Naming Convention:**
+```bash
+# ✅ Descriptive, type-prefixed names
+feature/add-risk-manager-stop-loss
+fix/order-rejected-on-market-open
+chore/upgrade-ibapi-to-10.19
+refactor/extract-position-calculator
+
+# ❌ Vague or unprefixed names
+my-branch
+update
+fix2
+```
+
+**The Workflow (Non-Negotiable):**
+1. **Create a feature branch** from up-to-date `main`
+   ```bash
+   git fetch origin
+   git checkout -b feature/my-feature origin/main
+   ```
+2. **Work on the branch** — commit frequently with descriptive messages
+3. **Pass all tests locally** before opening a PR (Principle 1)
+4. **Open a Pull Request** — describe what changed and why
+5. **Code review** — at least one reviewer must approve before merge
+6. **Merge** only after all checks pass and review is approved
+
+**Code Review Checklist (Reviewer):**
+- [ ] Does the code do what the PR description claims?
+- [ ] Are edge cases handled? (None, empty, boundary values — Principle 3)
+- [ ] Are tests present and meaningful? (Principle 1)
+- [ ] Are there any security concerns? (secrets, injection, input validation — Principles 7, 13)
+- [ ] Is the code readable without excessive explanation?
+- [ ] Does it introduce any new warnings or deprecations?
+
+**Code Review Checklist (Author):**
+- [ ] All tests pass with zero warnings (Principle 1)
+- [ ] No secrets or credentials in diff (Principle 12)
+- [ ] PR scope is focused — one logical change per PR
+- [ ] Commit messages are descriptive (type: summary format)
+- [ ] Breaking changes are documented
+
+**Keep PRs Small:**
+- Large PRs are harder to review and more likely to introduce subtle bugs
+- A PR should ideally change fewer than 400 lines
+- If a feature is large, split it into sequential PRs
+
+**❌ Never:**
+- Push directly to `main` (except for critical hotfixes with immediate retrospective)
+- Merge a PR without at least one review (for solo projects: self-review with a checklist)
+- Leave stale branches open for weeks — merge or delete
+- Use `git push --force` on shared branches (destroys collaborators' history)
+
+**✅ Always:**
+- Branch from the latest `main`
+- Keep `main` in a deployable state at all times
+- Write a clear PR description explaining the "why" not just the "what"
+- Respond to review comments before re-requesting review
+- Delete merged branches to keep the repo tidy
+
+---
+
+### 14. **CDN / External Resource Integrity — Never Write SRI Hashes by Hand**
+**CRITICAL:** Subresource Integrity (SRI) `integrity="sha384-..."` attributes must always be computed directly from the live CDN file. Writing or copying a hash from memory, documentation, or a previous session is unreliable and will cause the resource to be silently blocked by the browser.
+
+**The Rule:**
+Before committing any `<link>` or `<script>` tag that includes an `integrity` attribute, verify the hash by downloading and hashing the actual file.
+
+**Why Hand-Written Hashes Fail:**
+- CDN providers occasionally update file content (minification changes, patch releases) even under the same version URL
+- A single character case difference (`s` vs `S`) produces a completely different Base64 hash — the error is invisible in a code review
+- The browser blocks the resource silently; the only symptom is a console error and broken JavaScript, which looks identical to many other UI bugs
+- Backend tests pass regardless — they never load the CDN resource
+
+**The Correct Protocol — Always Compute From the Live File:**
+
+```powershell
+# ✅ CORRECT — download the file and compute its actual SHA-384 hash
+Scripts\python.exe -c "import urllib.request, hashlib, base64; d = urllib.request.urlopen('REPLACE_WITH_CDN_URL').read(); print('sha384-' + base64.b64encode(hashlib.sha384(d).digest()).decode())"
+```
+
+Then paste the printed value directly into the `integrity` attribute.
+
+**Example (Bootstrap 5.3.3 JS):**
+```powershell
+Scripts\python.exe -c "import urllib.request, hashlib, base64; d = urllib.request.urlopen('https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js').read(); print('sha384-' + base64.b64encode(hashlib.sha384(d).digest()).decode())"
+# Output: sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz
+```
+
+**Verification Step After Editing:**
+After updating the hash in the template, confirm Flask is serving the corrected value before committing:
+```powershell
+$r = Invoke-WebRequest -Uri 'http://localhost:5000/' -UseBasicParsing
+($r.Content | Select-String -Pattern 'integrity="sha384[^"]*"' -AllMatches).Matches | ForEach-Object { $_.Value }
+# Must match the hash you just computed above
+```
+
+**When This Rule Applies:**
+- Any new `<script>` or `<link>` tag added with a CDN URL and `integrity` attribute
+- Any time a CDN library version is upgraded
+- Any time a template is copied from a code sample, documentation, or another project
+- Any time an SRI-related console error appears (treat as hash mismatch, compute fresh)
+
+**❌ Never:**
+- Copy an SRI hash from a README, documentation page, or code sample without verifying it against the live file
+- Write a hash from memory or a prior session
+- Assume the hash embedded in a CDN provider's own documentation is current
+- "Fix" an SRI error by removing the `integrity` attribute — that removes the security guarantee entirely
+- Retry the same broken hash after a browser SRI error — always recompute
+
+**✅ Always:**
+- Run the `urllib.request` / `hashlib.sha384` one-liner against the exact CDN URL before committing
+- Check browser console (F12) after any change touching CDN `integrity` attributes — 0 errors required
+- Verify Flask is serving the new hash via `Invoke-WebRequest` before marking the fix done
+
+---
+
 ## 🧪 Testing Strategy Decision Matrix
 
 **Quick Guide: What Testing Do I Need?**
@@ -2000,6 +2314,78 @@ Reality: Actually fixed, user confirmed
 - Use browser DevTools as religiously as pytest
 - Treat premature commits as failures requiring incident reports
 - Accept that some verification requires actual execution, not code review
+
+---
+
+### Case Study (Web App): SRI Hash Written by Hand — One Character, Hours Lost (May 18, 2026)
+
+#### Lesson: Never Write or Copy SRI Hashes — Always Compute Them From the Live File
+
+**Context:** CDW application — Bootstrap JS was silently blocked on the Export page, making the download button unresponsive. Three separate sessions were spent diagnosing the issue before the root cause was identified.
+
+**The Incident:**
+1. User reported the Export page download button was "unresponsive"
+2. Browser console showed: `Failed to find a valid digest in the 'integrity' attribute for resource`
+3. A fix was committed (`4ddb802`) with a "corrected" SRI hash — written from inspection of the error, not computed from the file
+4. User hard-refreshed, restarted Flask, tested again — same error
+5. Another session was spent re-diagnosing (Flask not running, cache, etc.)
+6. Root cause finally found: the "corrected" hash had a lowercase `s` where the actual file's hash has an uppercase `S` in position 32 of the Base64 string
+
+**The One-Character Difference:**
+```
+# What was committed (WRONG):
+sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLEsaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz
+                                          ^
+                                     lowercase s
+
+# What the file actually hashes to (CORRECT):
+sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz
+                                          ^
+                                     uppercase S
+```
+
+Base64 is case-sensitive. The browser computes the hash from the file it downloads, then compares it character-by-character against the `integrity` attribute. One character mismatch = blocked.
+
+**Why It Was Hard to Find:**
+- The hash strings are 64 characters long — a single case difference is invisible in a code review
+- The page loaded correctly (Flask was serving HTML); only the CDN JS was blocked
+- The error message shows the *computed* hash, not the *attribute* hash — easy to misread
+- Flask's debug mode re-reads templates on every request, so there was no caching issue to investigate
+- Multiple red herrings: Flask not running, browser cache, Edge tracking prevention — all explored before the hash itself was checked
+
+**What Should Have Happened:**
+```powershell
+# ✅ CORRECT — one command, done, no guessing
+Scripts\python.exe -c "import urllib.request, hashlib, base64; d = urllib.request.urlopen('https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js').read(); print('sha384-' + base64.b64encode(hashlib.sha384(d).digest()).decode())"
+# Output: sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz
+```
+
+Then verify Flask is serving the result:
+```powershell
+$r = Invoke-WebRequest -Uri 'http://localhost:5000/' -UseBasicParsing
+($r.Content | Select-String -Pattern 'integrity="sha384[^"]*"' -AllMatches).Matches | ForEach-Object { $_.Value }
+```
+
+**Cost Analysis:**
+- Time to compute hash from live URL: **30 seconds**
+- Time spent across multiple sessions diagnosing: **60+ minutes**
+- Additional incorrect commits: **1**
+- User frustration: **High** (tested the same broken behaviour repeatedly)
+
+**Root Causes:**
+1. SRI hash written by reading the error message instead of computing from the file
+2. No verification step — Flask was queried for CSS/JS loading but not for the integrity attribute value itself
+3. Principle 14 did not exist — no documented rule requiring hash computation
+
+**Lessons Learned:**
+1. **SRI hashes are opaque 64-character Base64 strings — never write them from memory or by eye**
+2. **The correct hash is computed from the file, not inferred from error messages**
+3. **After any SRI fix, verify the served attribute value matches the computed hash before closing the task**
+4. **A one-character difference in a hash is undetectable in code review — only the computation matters**
+
+**Permanent Rule Additions:**
+- Principle 14 added: CDN / External Resource Integrity — Never Write SRI Hashes by Hand
+- Pre-commit checklist item added for UI changes: CDN integrity hash verified against live URL
 
 ---
 
@@ -2903,10 +3289,14 @@ When deleting code:
 2. ✅ Search for all usages: `grep_search(query="module_name", isRegexp=True)`
 3. ✅ Analyze impact (is it in test suite? imported elsewhere?)
 4. ✅ Delete in logical groups (related files together)
+5. ✅ Verify tests still pass after deletion
+6. ✅ Commit with detailed message explaining what and why
+7. ✅ Reference commit hash in documentation if significant
+8. ✅ Never force-push (preserve git history)
 
 ---
 
-### 9. **Periodic Test Coverage Audit - Prevent Silent Gaps**
+### 14. **Periodic Test Coverage Audit - Prevent Silent Gaps**
 
 **CRITICAL:** New modules can accumulate without smoke tests if the Module → Smoke Test Hard Rule
 (Principle 1) is not enforced in every commit. This principle adds a **scheduled safety net**.
@@ -2976,10 +3366,6 @@ Record the audit result in `session_log.md` as a checkpoint entry with type `aud
 - Close all gaps before proceeding with new work
 - Record audit outcome in `session_log.md`
 - Run `tests/run_all_smoke.py` to confirm 0 failures after closing gaps
-5. ✅ Verify tests still pass after deletion
-6. ✅ Commit with detailed message explaining what and why
-7. ✅ Reference commit hash in documentation if significant
-8. ✅ Never force-push (preserve git history)
 
 ---
 
@@ -3467,11 +3853,12 @@ Approved ASCII replacements ONLY:
 - ✅ For UI changes, include: "Manual Testing: [PASS]" with checklist items
 - ✅ Never commit code with failing tests or warnings
 
-**Document last updated:** 2026-02-19
+**Document last updated:** 2026-05-18
 
 ---
 
 **Revision History:**
+- **2026-05-18 (v12): CDN SRI Hash Integrity Rule** - Added Principle 14 "CDN / External Resource Integrity — Never Write SRI Hashes by Hand"; added pre-commit checklist item requiring hash computation from live URL for any CDN integrity attribute; added Case Study "SRI Hash Written by Hand — One Character, Hours Lost" documenting the Bootstrap JS incident where a single character case difference (s vs S) caused Bootstrap to be blocked, with 60+ minutes of diagnosis across multiple sessions; root cause was writing the hash by inspection rather than computing it from the downloaded file; prevention: always run the urllib.request/hashlib.sha384 one-liner against the exact CDN URL before committing
 - **2026-02-20 (v11): Cross-Project Portability Refactor** - Added explicit global scope statement; generalized hardcoded project path examples (`<project-folder>`); reframed ClearMeet-titled incidents as stack-agnostic case studies; generalized output-quality wording beyond MOM-specific content; converted Git Bash section into an optional Windows project profile; clarified that historical/case-study sections are examples to apply across projects
 - **2026-02-20 (v10): Context Cleanup Pass** - Updated virtual environment examples to use ClearMeet naming (`clearmeet` instead of `pp2-practice-bot`); refreshed internal documentation pointers (`session_log.md`, `tests/`); archived outdated non-ClearMeet sprint metrics into a legacy reference note; normalized "Code Quality Standards Achieved" into project-agnostic target-state criteria
 - **2026-02-20 (v9): Hosted Deployment Addendum + Streamlit Rerun Discipline** - Added hosted dependency checks, version pinning guidance, and system dependency declaration for cloud deployments; added Streamlit rerun caching discipline to prevent unintended reprocessing; required hosted smoke tests for end-to-end verification
