@@ -11,7 +11,11 @@ from .routes import attendance, auth, events, groups, members
 
 def create_app(env: str = "development") -> Flask:
     app = Flask(__name__)
-    app.config.from_object(config.get(env, config["default"]))
+    cfg = config.get(env, config["default"])
+    app.config.from_object(cfg)
+
+    if hasattr(cfg, "validate"):
+        cfg.validate()
 
     db.init_app(app)
     login_manager.init_app(app)
@@ -80,7 +84,7 @@ def create_app(env: str = "development") -> Flask:
             print("A user with that username or email already exists.")
             return
 
-        user = User(username=username, email=email, is_superuser=True)
+        user = User(username=username, email=email, is_superuser=True, is_admin=True)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()

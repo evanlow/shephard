@@ -9,6 +9,17 @@ from ..models.user import User
 bp = Blueprint("auth", __name__)
 
 
+def admin_required(f):
+    """Decorator: requires the current user to be an admin or superuser."""
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not (current_user.is_admin or current_user.is_superuser):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
+
 def superuser_required(f):
     """Decorator: requires the current user to have is_superuser=True."""
     @wraps(f)
@@ -72,7 +83,7 @@ def create_user():
         return render_template("auth/user_form.html",
                                username=username, email=email), 400
 
-    user = User(username=username, email=email)
+    user = User(username=username, email=email, is_admin=True)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()

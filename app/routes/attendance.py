@@ -1,13 +1,14 @@
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 
+from ..routes.auth import admin_required
 from ..services.attendance_service import AttendanceService
 
 bp = Blueprint("attendance", __name__)
 
 
 @bp.before_request
-@login_required
+@admin_required
 def protect():
     pass
 
@@ -23,6 +24,7 @@ def list_attendance():
             "event_id": r.event_id,
             "member_id": r.member_id,
             "present": r.present,
+            "marked_by": r.marked_by,
             "recorded_at": r.recorded_at.isoformat(),
         }
         for r in records
@@ -49,7 +51,7 @@ def record_attendance():
     if not member_id:
         return jsonify({"error": "member_id is required"}), 400
 
-    record, error = AttendanceService.record(event_id=event_id, member_id=member_id, present=bool(present))
+    record, error = AttendanceService.record(event_id=event_id, member_id=member_id, present=bool(present), marked_by=current_user.id)
     if error:
         return jsonify({"error": error}), 400
 
@@ -58,6 +60,7 @@ def record_attendance():
         "event_id": record.event_id,
         "member_id": record.member_id,
         "present": record.present,
+        "marked_by": record.marked_by,
     }), 201
 
 

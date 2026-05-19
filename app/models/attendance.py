@@ -15,6 +15,7 @@ class Attendance(db.Model):
     event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False)
     member_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=False)
     present = db.Column(db.Boolean, nullable=False, default=False)
+    marked_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     event = db.relationship("Event", back_populates="attendance_records")

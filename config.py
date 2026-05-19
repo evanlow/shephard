@@ -29,6 +29,11 @@ class ProductionConfig(Config):
     def validate(cls):
         if not cls.SQLALCHEMY_DATABASE_URI:
             raise ValueError("DATABASE_URL environment variable is not set.")
+        if cls.SECRET_KEY == "dev-secret-key-change-in-production":
+            raise ValueError(
+                "SECRET_KEY must be set to a strong random value in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
 
 
 config = {
