@@ -1,0 +1,114 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Reports{% endblock %}
+{% block nav_reports %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Reports / Event Status</h2>
+</div>
+
+<!-- Event selector -->
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" action="{{ url_for('ui.reports') }}" class="row g-3 align-items-end">
+      <div class="col-sm-8 col-md-6">
+        <label class="form-label">Select Event</label>
+        <select name="event_id" class="form-select" onchange="this.form.submit()">
+          <option value="">— Choose an event —</option>
+          {% for e in events %}
+          <option value="{{ e.id }}" {% if event_id == e.id %}selected{% endif %}>
+            {{ e.name }} ({{ e.date.strftime('%d %b %Y') }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">View Report</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if status %}
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+  <div class="col-4">
+    <div class="card text-center border-secondary">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold">{{ status.expected_count }}</div>
+        <div class="text-muted small">Expected</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card text-center border-success">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-success">{{ status.present_count }}</div>
+        <div class="text-muted small">Present</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card text-center border-danger">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-danger">{{ status.absent_count }}</div>
+        <div class="text-muted small">Absent</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('ui.attendance', event_id=selected_event.id) }}"
+     class="btn btn-primary btn-sm">Take / Edit Attendance</a>
+</div>
+
+<div class="row g-3">
+  <!-- Present members -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Present</span>
+        <span class="badge bg-success">{{ status.present_count }}</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for m in status.present_members %}
+        <li class="list-group-item d-flex align-items-center gap-2">
+          <span class="badge bg-success rounded-circle p-1">&nbsp;</span>
+          {{ m.name }}
+        </li>
+        {% else %}
+        <li class="list-group-item text-muted">No members marked present.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- Absent members -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Absent</span>
+        <span class="badge bg-danger">{{ status.absent_count }}</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for m in status.absent_members %}
+        <li class="list-group-item d-flex align-items-center gap-2">
+          <span class="badge bg-danger rounded-circle p-1">&nbsp;</span>
+          {{ m.name }}
+        </li>
+        {% else %}
+        <li class="list-group-item text-muted">No members absent — great!</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+{% elif event_id %}
+<div class="alert alert-warning">Event not found.</div>
+{% else %}
+<div class="text-muted">Select an event above to view its attendance report.</div>
+{% endif %}
+{% endblock %}

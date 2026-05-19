@@ -1,0 +1,215 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Attendance — {{ event.name }}{% endblock %}
+{% block nav_events %}active{% endblock %}
+
+{% block content %}
+<!-- Event header -->
+<div class="mb-3">
+  <a href="{{ url_for('ui.events') }}" class="text-decoration-none">&larr; Back to Events</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h4 class="mb-1">{{ event.name }}</h4>
+    <p class="text-muted mb-2">
+      {{ event.date.strftime('%A, %d %B %Y — %H:%M') }}
+      {% if group %}&nbsp;&bull;&nbsp;<span class="badge bg-info text-dark">{{ group.name }}</span>{% endif %}
+    </p>
+    <!-- Attendance summary counters -->
+    <div class="d-flex gap-3 flex-wrap">
+      <div class="d-flex align-items-center gap-1">
+        <span class="badge bg-secondary">Expected</span>
+        <strong id="expected-count">{{ expected_count }}</strong>
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="badge bg-success">Present</span>
+        <strong id="present-count">{{ present_count }}</strong>
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="badge bg-danger">Absent</span>
+        <strong id="absent-count">{{ absent_count }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if expected_count == 0 %}
+<div class="alert alert-warning">
+  This event's group (<strong>{{ group.name if group else '—' }}</strong>) has no members assigned.
+  <a href="{{ url_for('ui.members') }}">Assign members to the group</a> first.
+</div>
+{% else %}
+
+<!-- Search and filter bar -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+    <input type="text" id="memberSearch" class="form-control form-control-sm"
+           style="max-width:220px;" placeholder="Search by name…" />
+    <div class="btn-group btn-group-sm" role="group">
+      <button type="button" class="btn btn-outline-secondary active filter-btn" data-filter="all">All</button>
+      <button type="button" class="btn btn-outline-success filter-btn" data-filter="present">Present</button>
+      <button type="button" class="btn btn-outline-danger filter-btn" data-filter="absent">Absent</button>
+    </div>
+    <span class="text-muted small ms-auto">Tap <strong>Present ✓</strong> to mark attendance</span>
+  </div>
+</div>
+
+<!-- Member attendance list -->
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" id="attendanceTable">
+      <thead class="table-light">
+        <tr>
+          <th>Member</th>
+          <th>Status</th>
+          <th class="text-end">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ms in members_status %}
+        <tr data-member-id="{{ ms.member.id }}"
+            data-attendance-id="{{ ms.attendance_id or '' }}"
+            data-present="{{ 'true' if ms.present else 'false' }}">
+          <td class="member-name align-middle fw-semibold">{{ ms.member.name }}</td>
+          <td class="align-middle">
+            <span class="badge status-badge {{ 'bg-success' if ms.present else 'bg-secondary' }}">
+              {{ 'Present' if ms.present else 'Absent' }}
+            </span>
+          </td>
+          <td class="align-middle text-end">
+            <button class="btn btn-success mark-btn {{ 'disabled' if ms.present else '' }}"
+                    {% if ms.present %}disabled{% endif %}>
+              Present ✓
+            </button>
+            <button class="btn btn-outline-secondary btn-sm unmark-btn {{ 'disabled' if not ms.present else '' }}"
+                    {% if not ms.present %}disabled{% endif %}>
+              Undo
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const EVENT_ID = {{ event.id }};
+  const MARK_URL   = "{{ url_for('ui.mark_present',  event_id=event.id) }}";
+  const UNMARK_URL = "{{ url_for('ui.mark_absent',   event_id=event.id) }}";
+
+  // --- AJAX attendance marking ---
+  function updateCounters(presentDelta) {
+    const pc = document.getElementById('present-count');
+    const ac = document.getElementById('absent-count');
+    pc.textContent = Math.max(0, parseInt(pc.textContent) + presentDelta);
+    ac.textContent = Math.max(0, parseInt(ac.textContent) - presentDelta);
+  }
+
+  document.querySelectorAll('.mark-btn').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      if (this.disabled) return;
+      const row = this.closest('tr');
+      const memberId = row.dataset.memberId;
+      const attendanceId = row.dataset.attendanceId;
+
+      let resp;
+      if (attendanceId) {
+        resp = await fetch(`/api/attendance/${attendanceId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ present: true }),
+        });
+      } else {
+        resp = await fetch('/api/attendance/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: EVENT_ID, member_id: parseInt(memberId), present: true }),
+        });
+      }
+
+      if (resp.ok) {
+        const data = await resp.json();
+        row.dataset.attendanceId = data.id;
+        row.dataset.present = 'true';
+        const badge = row.querySelector('.status-badge');
+        badge.className = 'badge status-badge bg-success';
+        badge.textContent = 'Present';
+        this.disabled = true;
+        this.classList.add('disabled');
+        const unmarkBtn = row.querySelector('.unmark-btn');
+        unmarkBtn.disabled = false;
+        unmarkBtn.classList.remove('disabled');
+        updateCounters(1);
+        applyFilter();
+      } else {
+        alert('Failed to mark attendance. Please try again.');
+      }
+    });
+  });
+
+  document.querySelectorAll('.unmark-btn').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      if (this.disabled) return;
+      const row = this.closest('tr');
+      const attendanceId = row.dataset.attendanceId;
+      if (!attendanceId) return;
+
+      const resp = await fetch(`/api/attendance/${attendanceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ present: false }),
+      });
+
+      if (resp.ok) {
+        row.dataset.present = 'false';
+        const badge = row.querySelector('.status-badge');
+        badge.className = 'badge status-badge bg-secondary';
+        badge.textContent = 'Absent';
+        this.disabled = true;
+        this.classList.add('disabled');
+        const markBtn = row.querySelector('.mark-btn');
+        markBtn.disabled = false;
+        markBtn.classList.remove('disabled');
+        updateCounters(-1);
+        applyFilter();
+      } else {
+        alert('Failed to update attendance. Please try again.');
+      }
+    });
+  });
+
+  // --- Search & filter ---
+  let activeFilter = 'all';
+
+  function applyFilter() {
+    const q = document.getElementById('memberSearch').value.toLowerCase();
+    document.querySelectorAll('#attendanceTable tbody tr').forEach(row => {
+      const name = (row.querySelector('.member-name') || {}).textContent || '';
+      const present = row.dataset.present;
+      const nameMatch = name.toLowerCase().includes(q);
+      const filterMatch =
+        activeFilter === 'all' ||
+        (activeFilter === 'present' && present === 'true') ||
+        (activeFilter === 'absent'  && present === 'false');
+      row.style.display = (nameMatch && filterMatch) ? '' : 'none';
+    });
+  }
+
+  document.getElementById('memberSearch').addEventListener('input', applyFilter);
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      activeFilter = this.dataset.filter;
+      applyFilter();
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "ui/base.html" %}
+
+{% block title %}Members{% endblock %}
+{% block nav_members %}active{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Members</h2>
+  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#addMemberForm">
+    + Add Member
+  </button>
+</div>
+
+<!-- Add member form (collapsed by default) -->
+<div class="collapse mb-4" id="addMemberForm">
+  <div class="card card-body">
+    <h5 class="mb-3">Add New Member</h5>
+    <form method="post" action="{{ url_for('ui.create_member') }}">
+      <div class="row g-3">
+        <div class="col-sm-5">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" placeholder="Full name" required autofocus />
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label">Assign to Group</label>
+          <select name="group_id" class="form-select">
+            <option value="">— No group —</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}">{{ g.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-success w-100">Add Member</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Members table -->
+<div class="card">
+  <div class="card-header d-flex align-items-center gap-2">
+    <input type="text" id="memberSearch" class="form-control form-control-sm w-auto flex-grow-1"
+           placeholder="Search by name…" />
+    <span class="text-muted small">{{ members|length }} member{{ 's' if members|length != 1 else '' }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" id="membersTable">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Group</th>
+          <th>Added</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td class="text-muted small">{{ loop.index }}</td>
+          <td class="member-name fw-semibold">{{ m.name }}</td>
+          <td>
+            {% if m.group %}
+              <span class="badge bg-info text-dark">{{ m.group.name }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ m.created_at.strftime('%d %b %Y') }}</td>
+          <td>
+            <a href="{{ url_for('ui.edit_member', member_id=m.id) }}"
+               class="btn btn-sm btn-outline-primary me-1">Edit</a>
+            {% if current_user.is_superuser %}
+            <form method="post" action="{{ url_for('ui.delete_member', member_id=m.id) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('Delete {{ m.name }}? This cannot be undone.');">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No members yet. Click <strong>+ Add Member</strong> to get started.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('memberSearch').addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#membersTable tbody tr').forEach(row => {
+      const name = (row.querySelector('.member-name') || {}).textContent || '';
+      row.style.display = name.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

@@ -6,7 +6,7 @@ from flask_login import current_user
 from config import config
 from .extensions import db, login_manager
 from .models.user import User
-from .routes import attendance, auth, events, groups, members
+from .routes import attendance, auth, events, groups, members, ui
 
 
 def create_app(env: str = "development") -> Flask:
@@ -43,6 +43,7 @@ def create_app(env: str = "development") -> Flask:
         return render_template("403.html"), 403
 
     app.register_blueprint(auth.bp)
+    app.register_blueprint(ui.bp)
     app.register_blueprint(members.bp, url_prefix="/api/members")
     app.register_blueprint(groups.bp, url_prefix="/api/groups")
     app.register_blueprint(events.bp, url_prefix="/api/events")

@@ -146,7 +146,22 @@ def login_post():
 @bp.get("/dashboard")
 @login_required
 def dashboard():
-    return render_template("auth/dashboard.html")
+    from ..services.event_service import EventService
+    from ..services.group_service import GroupService
+    from ..services.member_service import MemberService
+
+    members = MemberService.get_all()
+    groups = GroupService.get_all()
+    events = EventService.get_all()
+    recent_events = events[:5]
+
+    return render_template(
+        "auth/dashboard.html",
+        member_count=len(members),
+        group_count=len(groups),
+        event_count=len(events),
+        recent_events=recent_events,
+    )
 
 
 @bp.post("/logout")
