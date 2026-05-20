@@ -76,7 +76,7 @@ class TestMembersCRUD(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         data = json.loads(resp.data)
         self.assertEqual(data["name"], "Alice Smith")
-        self.assertIsNone(data["group_id"])
+        self.assertIsNotNone(data["group_id"])
         self.assertIn("id", data)
 
     def test_create_member_no_name_returns_400(self):

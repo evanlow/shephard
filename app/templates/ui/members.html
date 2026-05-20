@@ -22,13 +22,13 @@
           <input type="text" name="name" class="form-control" placeholder="Full name" required autofocus />
         </div>
         <div class="col-sm-4">
-          <label class="form-label">Assign to Group</label>
-          <select name="group_id" class="form-select">
-            <option value="">— No group —</option>
+          <label class="form-label">Additional Groups</label>
+          <select name="group_ids" class="form-select" multiple size="5">
             {% for g in groups %}
             <option value="{{ g.id }}">{{ g.name }}</option>
             {% endfor %}
           </select>
+          <div class="form-text">ALL MEMBERS is assigned automatically.</div>
         </div>
         <div class="col-sm-3 d-flex align-items-end">
           <button type="submit" class="btn btn-success w-100">Add Member</button>
@@ -62,11 +62,11 @@
           <td class="text-muted small">{{ loop.index }}</td>
           <td class="member-name fw-semibold">{{ m.name }}</td>
           <td>
-            {% if m.group %}
-              <span class="badge bg-info text-dark">{{ m.group.name }}</span>
+            {% for g in m.groups %}
+              <span class="badge {{ 'bg-warning text-dark' if g.name == default_group.name else 'bg-info text-dark' }}">{{ g.name }}</span>
             {% else %}
               <span class="text-muted">—</span>
-            {% endif %}
+            {% endfor %}
           </td>
           <td class="text-muted small">{{ m.created_at.strftime('%d %b %Y') }}</td>
           <td>

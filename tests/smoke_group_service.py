@@ -32,7 +32,9 @@ class TestGroupService(unittest.TestCase):
         self.ctx.pop()
 
     def test_get_all_returns_empty_list(self):
-        self.assertEqual(GroupService.get_all(), [])
+        groups = GroupService.get_all()
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].name, "ALL MEMBERS")
 
     def test_create_returns_group_with_id(self):
         group = GroupService.create(name="Worship")
@@ -46,7 +48,7 @@ class TestGroupService(unittest.TestCase):
 
     def test_create_persists_to_db(self):
         GroupService.create(name="Bible Study")
-        self.assertEqual(len(GroupService.get_all()), 1)
+        self.assertEqual(len(GroupService.get_all()), 2)
 
     def test_get_by_id_returns_group(self):
         created = GroupService.create(name="Choir")
@@ -85,9 +87,10 @@ class TestGroupService(unittest.TestCase):
         db.session.add(member)
         db.session.commit()
 
+        default_group = GroupService.get_default_group()
         self.assertTrue(GroupService.delete(group.id))
         db.session.refresh(member)
-        self.assertIsNone(member.group_id)
+        self.assertEqual(member.group_id, default_group.id)
 
     def test_get_all_returns_groups_alphabetically(self):
         GroupService.create(name="Zion")

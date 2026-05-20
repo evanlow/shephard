@@ -19,15 +19,15 @@
         <input type="text" name="name" class="form-control" value="{{ member.name }}" required />
       </div>
       <div class="mb-4">
-        <label class="form-label">Group</label>
-        <select name="group_id" class="form-select">
-          <option value="0">— No group —</option>
+        <label class="form-label">Additional Groups</label>
+        <select name="group_ids" class="form-select" multiple size="6">
           {% for g in groups %}
-          <option value="{{ g.id }}" {% if member.group_id == g.id %}selected{% endif %}>
+          <option value="{{ g.id }}" {% if g in member.groups %}selected{% endif %}>
             {{ g.name }}
           </option>
           {% endfor %}
         </select>
+        <div class="form-text">ALL MEMBERS is always included automatically.</div>
       </div>
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">Save Changes</button>

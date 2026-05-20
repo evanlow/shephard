@@ -7,6 +7,10 @@ from sqlalchemy import text
 from config import config
 from .extensions import db, login_manager
 from .models.user import User
+from .models.member import Member
+from .models.group import Group
+from .models.membership import DEFAULT_GROUP_NAME
+from .services.group_service import GroupService
 from .routes import attendance, auth, events, groups, members, ui
 
 
@@ -47,6 +51,21 @@ def _ensure_sqlite_schema_compatibility() -> None:
             }
             if "marked_by" not in attendance_columns:
                 conn.execute(text("ALTER TABLE attendance ADD COLUMN marked_by INTEGER"))
+
+
+def _ensure_default_group_membership() -> None:
+    default_group = GroupService.get_default_group()
+
+    members = db.session.execute(db.select(Member).order_by(Member.id)).scalars().all()
+    for member in members:
+        if member.group_id is None:
+            member.group_id = default_group.id
+        if default_group not in member.groups:
+            member.groups.append(default_group)
+        if member.group and member.group not in member.groups:
+            member.groups.append(member.group)
+
+    db.session.commit()
 
 
 def create_app(env: str = "development") -> Flask:
@@ -136,10 +155,12 @@ def create_app(env: str = "development") -> Flask:
         with app.app_context():
             db.create_all()
             _ensure_sqlite_schema_compatibility()
+            _ensure_default_group_membership()
         print("Database tables created.")
 
     with app.app_context():
         db.create_all()
         _ensure_sqlite_schema_compatibility()
+        _ensure_default_group_membership()
 
     return app

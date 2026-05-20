@@ -218,13 +218,16 @@ class TestGroupsUI(unittest.TestCase):
         db.session.commit()
         gid = group.id
         mid = member.id
+        default_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
 
         resp = self.client.post(f"/groups/{gid}/delete")
         self.assertEqual(resp.status_code, 302)
         self.assertIsNone(db.session.get(Group, gid))
         remaining = db.session.get(Member, mid)
         self.assertIsNotNone(remaining)
-        self.assertIsNone(remaining.group_id)
+        self.assertEqual(remaining.group_id, default_group.id)
 
 
 # ---------------------------------------------------------------------------
