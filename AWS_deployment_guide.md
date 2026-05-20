@@ -543,26 +543,25 @@ sudo /tmp/aws/install
 ```bash
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin shepherd
 sudo mkdir -p /opt/shepherd
-sudo chown ubuntu:ubuntu /opt/shepherd
+sudo chown root:root /opt/shepherd
+sudo chmod 755 /opt/shepherd
 ```
 
 #### Clone the repository
 
 ```bash
-cd /opt/shepherd
-git clone https://github.com/evanlow/shepherd.git app
-cd app
+sudo git clone https://github.com/evanlow/shepherd.git /opt/shepherd/app
+sudo chown -R shepherd:shepherd /opt/shepherd/app
+cd /opt/shepherd/app
 ```
 
 #### Create the virtual environment and install dependencies
 
 ```bash
-python3.11 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install gunicorn         # production WSGI server
-deactivate
+cd /opt/shepherd/app
+sudo -u shepherd python3.11 -m venv venv
+sudo -u shepherd /opt/shepherd/app/venv/bin/pip install --upgrade pip
+sudo -u shepherd /opt/shepherd/app/venv/bin/pip install -r requirements.txt
 ```
 
 #### Create the environment file
@@ -583,7 +582,7 @@ DATABASE_URL=postgresql://shepherd_admin:<password>@shepherd-db.xxxxxxxxxxxx.ap-
 Secure the file:
 
 ```bash
-sudo chown root:ubuntu /etc/shepherd/env
+sudo chown root:shepherd /etc/shepherd/env
 sudo chmod 640 /etc/shepherd/env
 ```
 
@@ -599,8 +598,8 @@ Description=Shepherd Flask Application (Gunicorn)
 After=network.target
 
 [Service]
-User=ubuntu
-Group=ubuntu
+User=shepherd
+Group=shepherd
 WorkingDirectory=/opt/shepherd/app
 EnvironmentFile=/etc/shepherd/env
 ExecStart=/opt/shepherd/app/venv/bin/gunicorn \
@@ -625,7 +624,7 @@ Create the log directory:
 
 ```bash
 sudo mkdir -p /var/log/shepherd
-sudo chown ubuntu:ubuntu /var/log/shepherd
+sudo chown shepherd:shepherd /var/log/shepherd
 ```
 
 Enable and start the service:
@@ -676,16 +675,19 @@ sudo systemctl reload nginx
 
 ## 9. Initialise the Database and Admin User
 
-### 9.1 Run Database Migrations
+### 9.1 Initialise the Database Schema
 
 SSH into the EC2 instance:
 
 ```bash
+sudo -u shepherd bash -lc '
 cd /opt/shepherd/app
 source venv/bin/activate
-export $(sudo cat /etc/shepherd/env | xargs)    # load env vars into current shell
-
+set -a
+. /etc/shepherd/env
+set +a
 FLASK_APP=run.py flask init-db
+'
 ```
 
 Expected output:
@@ -696,7 +698,14 @@ Database tables created.
 ### 9.2 Create the First Superuser
 
 ```bash
+sudo -u shepherd bash -lc '
+cd /opt/shepherd/app
+source venv/bin/activate
+set -a
+. /etc/shepherd/env
+set +a
 FLASK_APP=run.py flask create-admin
+'
 ```
 
 You will be prompted for:
@@ -738,7 +747,7 @@ Developer pushes to main
 │  3. install dependencies                    │
 │  4. run smoke tests                         │
 │       └── FAIL → stop, notify              │
-│  5. assume AWS role via OIDC               │
+│  5. optionally assume AWS role via OIDC    │
 │  6. SSH into EC2 (or SSM SendCommand)       │
 │  7. run /opt/shepherd/deploy.sh             │
 │  8. health check — GET /login → 200         │
@@ -751,7 +760,7 @@ Developer pushes to main
          │
          ├── git pull origin main
          ├── pip install -r requirements.txt
-         ├── FLASK_APP=run.py flask init-db  (idempotent)
+         ├── FLASK_APP=run.py flask init-db  (schema initialisation; idempotent)
          └── sudo systemctl reload shepherd
 ```
 
@@ -798,8 +807,8 @@ Add the following secrets:
 
 | Secret name | Value | Description |
 |---|---|---|
-| `AWS_ROLE_ARN` | `arn:aws:iam::<ACCOUNT_ID>:role/shepherd-github-deploy-role` | OIDC role for AWS auth |
-| `AWS_REGION` | `ap-southeast-1` | AWS region |
+| `AWS_ROLE_ARN` | `arn:aws:iam::<ACCOUNT_ID>:role/shepherd-github-deploy-role` | OIDC role for AWS auth (optional for SSH-only deploy) |
+| `AWS_REGION` | `ap-southeast-1` | AWS region (optional for SSH-only deploy) |
 | `EC2_HOST` | `54.179.x.x` (Elastic IP) | EC2 public IP or DNS |
 | `EC2_USER` | `ubuntu` | SSH login user |
 | `EC2_SSH_KEY` | Contents of `shepherd-key.pem` | Private key for SSH deployment |
@@ -871,7 +880,7 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write    # Required for OIDC
+  id-token: write    # Required only when using the optional OIDC step below
   contents: read
 
 jobs:
@@ -906,7 +915,8 @@ jobs:
     environment: production
 
     steps:
-      - name: Configure AWS credentials via OIDC
+      - name: Configure AWS credentials via OIDC (optional for SSH-only deploy)
+        if: ${{ secrets.AWS_ROLE_ARN != '' && secrets.AWS_REGION != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -922,9 +932,14 @@ jobs:
           echo "$SSH_KEY" > /tmp/deploy_key.pem
           chmod 600 /tmp/deploy_key.pem
 
+          # Add host key and enforce strict checking
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
           # SSH into EC2 and run the deploy script
           ssh -i /tmp/deploy_key.pem \
-              -o StrictHostKeyChecking=no \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
               -o ConnectTimeout=30 \
               "$EC2_USER@$EC2_HOST" \
               "sudo /opt/shepherd/deploy.sh 2>&1"
@@ -1049,9 +1064,11 @@ echo "Installing dependencies..." | tee -a "$LOG_FILE"
 "$VENV/bin/pip" install --quiet --upgrade pip
 "$VENV/bin/pip" install --quiet -r requirements.txt
 
-# Run database migrations (init-db is idempotent — safe to run every deploy)
-echo "Running database migrations..." | tee -a "$LOG_FILE"
-export $(cat /etc/shepherd/env | grep -v '^#' | xargs)
+# Initialise database schema (init-db runs db.create_all and is idempotent)
+echo "Initialising database schema..." | tee -a "$LOG_FILE"
+set -a
+. /etc/shepherd/env
+set +a
 FLASK_APP=run.py "$VENV/bin/flask" init-db
 
 # Gracefully reload the application (zero-downtime with Gunicorn)
@@ -1064,7 +1081,8 @@ echo "=== Deploy complete at $(date -u) ===" | tee -a "$LOG_FILE"
 Make the script executable:
 
 ```bash
-sudo chmod +x /opt/shepherd/deploy.sh
+sudo chown root:root /opt/shepherd/deploy.sh
+sudo chmod 750 /opt/shepherd/deploy.sh
 ```
 
 Allow the `ubuntu` user to run the deploy script as root without a password:
@@ -1105,9 +1123,9 @@ After the first deployment, every subsequent push to `main` follows this flow au
 1. **Code push** → triggers the `Test and Deploy` workflow.
 2. **Smoke tests** run in a clean Python 3.11 environment. If any test fails, the workflow stops — nothing is deployed.
 3. **Approval** (if you configured required reviewers in the `production` environment) — you approve in the GitHub Actions UI.
-4. **AWS OIDC** — GitHub Actions obtains short-lived AWS credentials (no long-lived secrets needed).
+4. **Optional AWS OIDC** — GitHub Actions obtains short-lived AWS credentials when you use AWS APIs (for SSH-only deployment, you can skip this).
 5. **SSH deploy** — the workflow SSHs into EC2 and runs `/opt/shepherd/deploy.sh`.
-6. **Deploy script** pulls the latest code, updates dependencies, runs migrations, and reloads Gunicorn.
+6. **Deploy script** pulls the latest code, updates dependencies, initialises schema (`flask init-db`), and reloads Gunicorn.
 7. **Health check** — the workflow verifies the app is responding with HTTP 200/302.
 8. **Notification** — success or failure notification is sent.
 
@@ -1220,7 +1238,7 @@ Shepherd's `config.py` includes a `ProductionConfig.validate()` method that rais
 
 ### 23.2 Session Security
 
-In production, Flask sets `SESSION_COOKIE_SECURE = True` by default when `DEBUG = False`, meaning session cookies are only sent over HTTPS. Ensure:
+In production, explicitly set `SESSION_COOKIE_SECURE = True` so session cookies are only sent over HTTPS. Ensure:
 
 ```python
 # config.py — ProductionConfig
@@ -1368,7 +1386,7 @@ s3 = boto3.client("s3", region_name="ap-southeast-1")
 For bulk data file uploads (e.g. initial member data), use the AWS CLI directly on the EC2 instance:
 
 ```bash
-aws s3 cp /path/to/local/file.csv s3://shepherd-data-<account-id>/uploads/file.csv
+aws s3 cp /path/to/local/file.csv s3://shepherd-data-<account-id>/uploads/file.csv --sse AES256
 ```
 
 ---
@@ -1720,7 +1738,8 @@ pg_dump -h shepherd-db.xxxxxxxxxxxx.ap-southeast-1.rds.amazonaws.com \
 
 # Upload to S3 for long-term storage
 aws s3 cp /tmp/shepherd-$(date +%Y%m%d).dump \
-    s3://shepherd-data-<account-id>/backups/shepherd-$(date +%Y%m%d).dump
+    s3://shepherd-data-<account-id>/backups/shepherd-$(date +%Y%m%d).dump \
+    --sse AES256
 ```
 
 ### 30.5 Restore from a SQL Dump
@@ -1739,6 +1758,10 @@ pg_restore -h <rds-endpoint> -U shepherd_admin -d shepherd \
 Create `/opt/shepherd/backup.sh` on EC2 for daily scheduled exports:
 
 ```bash
+sudo nano /opt/shepherd/backup.sh
+```
+
+```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -1752,14 +1775,15 @@ DUMP_FILE="/tmp/shepherd-${DATE}.dump"
 export PGPASSWORD="<your-db-password>"
 
 pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -F c -f "$DUMP_FILE"
-aws s3 cp "$DUMP_FILE" "s3://${S3_BUCKET}/backups/shepherd-${DATE}.dump"
+aws s3 cp "$DUMP_FILE" "s3://${S3_BUCKET}/backups/shepherd-${DATE}.dump" --sse AES256
 rm -f "$DUMP_FILE"
 
 echo "Backup shepherd-${DATE}.dump uploaded to S3."
 ```
 
 ```bash
-sudo chmod +x /opt/shepherd/backup.sh
+sudo chown root:root /opt/shepherd/backup.sh
+sudo chmod 750 /opt/shepherd/backup.sh
 ```
 
 Add a daily crontab entry (as ubuntu user):
@@ -1842,7 +1866,9 @@ journalctl -u shepherd -n 50 --no-pager
 # Test running Gunicorn manually
 cd /opt/shepherd/app
 source venv/bin/activate
-export $(sudo cat /etc/shepherd/env | xargs)
+set -a
+. /etc/shepherd/env
+set +a
 gunicorn --workers 1 --bind 127.0.0.1:8000 run:app
 ```
 
@@ -1906,13 +1932,13 @@ ssh: connect to host xx.xx.xx.xx port 22: Connection refused
 - HTTP 000 means no response — check if Gunicorn restarted correctly.
 - SSH into EC2 and check: `sudo systemctl status shepherd` and `tail /var/log/shepherd/error.log`.
 
-### Database migrations fail on deploy
+### Database schema initialisation fails on deploy
 
 ```
 Error: FLASK_APP must be set
 ```
 
-- The deploy script sources `/etc/shepherd/env` to load environment variables. Verify the file exists and is readable by ubuntu.
+- The deploy script sources `/etc/shepherd/env` to load environment variables. Verify the file exists and is readable by the `shepherd` user.
 
 ### `flask init-db` creates tables but app still fails
 
