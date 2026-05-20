@@ -383,6 +383,7 @@ class TestToggleAdmin(unittest.TestCase):
         resp = self.client.post(f"/admin/users/{self.su.id}/toggle-admin")
         self.assertEqual(resp.status_code, 302)
         db.session.refresh(self.su)
+        self.assertTrue(self.su.is_admin)
         # Superuser status must be unchanged
         self.assertTrue(self.su.is_superuser)
 
@@ -391,6 +392,7 @@ class TestToggleAdmin(unittest.TestCase):
         resp = self.client.post(f"/admin/users/{su2.id}/toggle-admin")
         self.assertEqual(resp.status_code, 302)
         db.session.refresh(su2)
+        self.assertTrue(su2.is_admin)
         self.assertTrue(su2.is_superuser)
 
     def test_non_superuser_cannot_toggle_admin(self):
