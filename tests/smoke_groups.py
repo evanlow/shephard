@@ -64,7 +64,9 @@ class TestGroupsCRUD(unittest.TestCase):
     def test_list_groups_returns_empty_list(self):
         resp = self.client.get("/api/groups/")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(json.loads(resp.data), [])
+        data = json.loads(resp.data)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], "ALL MEMBERS")
 
     def test_create_group_returns_201(self):
         resp = self.client.post(

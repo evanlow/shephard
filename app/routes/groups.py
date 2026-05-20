@@ -44,6 +44,9 @@ def get_group(group_id: int):
 def update_group(group_id: int):
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip() or None
+    group = GroupService.get_by_id(group_id)
+    if group and group.name == "ALL MEMBERS" and name and name != group.name:
+        return jsonify({"error": "The ALL MEMBERS group cannot be renamed"}), 400
     group = GroupService.update(group_id, name=name, description=data.get("description"))
     if not group:
         return jsonify({"error": "Group not found"}), 404

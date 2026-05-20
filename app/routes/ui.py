@@ -36,8 +36,14 @@ bp = Blueprint("ui", __name__)
 @admin_required
 def members():
     all_members = MemberService.get_all()
-    all_groups = GroupService.get_all()
-    return render_template("ui/members.html", members=all_members, groups=all_groups)
+    default_group = GroupService.get_default_group()
+    all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
+    return render_template(
+        "ui/members.html",
+        members=all_members,
+        groups=all_groups,
+        default_group=default_group,
+    )
 
 
 @bp.post("/members")
@@ -45,6 +51,7 @@ def members():
 def create_member():
     name = request.form.get("name", "").strip()
     group_id = request.form.get("group_id") or None
+    group_ids = [int(group_id) for group_id in request.form.getlist("group_ids") if group_id]
     if group_id:
         try:
             group_id = int(group_id)
@@ -55,7 +62,7 @@ def create_member():
         flash("Member name is required.", "error")
         return redirect(url_for("ui.members"))
 
-    member, error = MemberService.create(name=name, group_id=group_id)
+    member, error = MemberService.create(name=name, group_id=group_id, group_ids=group_ids)
     if error:
         flash(error, "error")
     else:
@@ -70,8 +77,9 @@ def edit_member(member_id: int):
     if not member:
         flash("Member not found.", "error")
         return redirect(url_for("ui.members"))
-    all_groups = GroupService.get_all()
-    return render_template("ui/member_edit.html", member=member, groups=all_groups)
+    default_group = GroupService.get_default_group()
+    all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
+    return render_template("ui/member_edit.html", member=member, groups=all_groups, default_group=default_group)
 
 
 @bp.post("/members/<int:member_id>/edit")
@@ -79,11 +87,16 @@ def edit_member(member_id: int):
 def update_member(member_id: int):
     name = request.form.get("name", "").strip() or None
     raw_group = request.form.get("group_id")
-    group_id_provided = raw_group is not None
     group_id = int(raw_group) if raw_group and raw_group != "0" else None
+    group_ids = [int(group_id) for group_id in request.form.getlist("group_ids") if group_id]
+    groups_provided = raw_group is not None or bool(request.form.getlist("group_ids"))
 
     member, error = MemberService.update(
-        member_id, name=name, group_id=group_id, group_id_provided=group_id_provided
+        member_id,
+        name=name,
+        group_id=group_id,
+        group_ids=group_ids,
+        groups_provided=groups_provided,
     )
     if error == "Member not found":
         flash("Member not found.", "error")
@@ -117,14 +130,13 @@ def delete_member(member_id: int):
 @admin_required
 def groups():
     all_groups = GroupService.get_all()
+    default_group = GroupService.get_default_group()
     # Attach member counts
     groups_data = []
     for g in all_groups:
-        count = db.session.execute(
-            db.select(db.func.count(Member.id)).where(Member.group_id == g.id)
-        ).scalar()
+        count = len(g.members)
         groups_data.append({"group": g, "member_count": count})
-    return render_template("ui/groups.html", groups_data=groups_data)
+    return render_template("ui/groups.html", groups_data=groups_data, default_group=default_group)
 
 
 @bp.post("/groups")
@@ -160,6 +172,11 @@ def edit_group(group_id: int):
 def update_group(group_id: int):
     name = request.form.get("name", "").strip() or None
     description = request.form.get("description", "").strip()
+
+    group = GroupService.get_by_id(group_id)
+    if group and group.name == "ALL MEMBERS" and name and name != group.name:
+        flash("The ALL MEMBERS group cannot be renamed.", "error")
+        return redirect(url_for("ui.edit_group", group_id=group_id))
 
     if not name:
         flash("Group name is required.", "error")

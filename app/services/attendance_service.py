@@ -26,7 +26,7 @@ class AttendanceService:
         member = db.session.get(Member, member_id)
         if not member:
             return None, f"Member {member_id} not found"
-        if member.group_id != event.group_id:
+        if event.group not in member.groups:
             return None, "Member is not assigned to this event's group"
 
         record = Attendance(event_id=event_id, member_id=member_id, present=present, marked_by=marked_by)
@@ -44,9 +44,8 @@ class AttendanceService:
         if not event:
             return None, f"Event {event_id} not found"
 
-        expected_members = db.session.execute(
-            db.select(Member).where(Member.group_id == event.group_id).order_by(Member.name)
-        ).scalars().all()
+        expected_members = list(event.group.members)
+        expected_members.sort(key=lambda member: member.name)
         expected_member_ids = {m.id for m in expected_members}
 
         present_member_ids = set(
