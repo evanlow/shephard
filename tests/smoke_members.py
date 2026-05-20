@@ -182,6 +182,111 @@ class TestMembersCRUD(unittest.TestCase):
         resp = self.client.delete("/api/members/9999")
         self.assertEqual(resp.status_code, 404)
 
+    # ------------------------------------------------------------------
+    # Multi-group response fields
+    # ------------------------------------------------------------------
+
+    def test_list_members_response_includes_groups_fields(self):
+        self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Test Member"}),
+            content_type="application/json",
+        )
+        resp = self.client.get("/api/members/")
+        self.assertEqual(resp.status_code, 200)
+        members = json.loads(resp.data)
+        self.assertEqual(len(members), 1)
+        self.assertIn("group_ids", members[0])
+        self.assertIn("groups", members[0])
+        self.assertIsInstance(members[0]["group_ids"], list)
+        self.assertIsInstance(members[0]["groups"], list)
+
+    def test_get_member_response_includes_groups_fields(self):
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Checked Member"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+        resp = self.client.get(f"/api/members/{member_id}")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertIn("group_ids", data)
+        self.assertIn("groups", data)
+        self.assertIsInstance(data["group_ids"], list)
+        self.assertIsInstance(data["groups"], list)
+
+    def test_create_member_auto_enrolled_in_all_members(self):
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Auto Enrolled"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        group_names = [g["name"] for g in data["groups"]]
+        self.assertIn("ALL MEMBERS", group_names)
+
+    def test_create_member_with_group_ids_assigns_multiple_groups(self):
+        group_resp = self.client.post(
+            "/api/groups/",
+            data=json.dumps({"name": "Youth"}),
+            content_type="application/json",
+        )
+        group_id = json.loads(group_resp.data)["id"]
+
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Multi Group Member", "group_ids": [group_id]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        group_names = [g["name"] for g in data["groups"]]
+        self.assertIn("ALL MEMBERS", group_names)
+        self.assertIn("Youth", group_names)
+        self.assertIn(group_id, data["group_ids"])
+
+    def test_update_member_with_group_ids_assigns_multiple_groups(self):
+        group_resp = self.client.post(
+            "/api/groups/",
+            data=json.dumps({"name": "Choir"}),
+            content_type="application/json",
+        )
+        group_id = json.loads(group_resp.data)["id"]
+
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Group Updater"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"group_ids": [group_id]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        group_names = [g["name"] for g in data["groups"]]
+        self.assertIn("ALL MEMBERS", group_names)
+        self.assertIn("Choir", group_names)
+
+    def test_update_member_with_invalid_group_ids_returns_400(self):
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Bad Updater"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"group_ids": [9999]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

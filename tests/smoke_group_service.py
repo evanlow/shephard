@@ -99,6 +99,32 @@ class TestGroupService(unittest.TestCase):
         names = [g.name for g in GroupService.get_all()]
         self.assertEqual(names, sorted(names))
 
+    # ------------------------------------------------------------------
+    # Default group management
+    # ------------------------------------------------------------------
+
+    def test_get_default_group_returns_all_members_group(self):
+        group = GroupService.get_default_group()
+        self.assertIsNotNone(group.id)
+        self.assertEqual(group.name, "ALL MEMBERS")
+
+    def test_get_default_group_is_idempotent(self):
+        group1 = GroupService.get_default_group()
+        group2 = GroupService.get_default_group()
+        self.assertEqual(group1.id, group2.id)
+
+    def test_ensure_default_group_returns_committed_group(self):
+        group = GroupService.ensure_default_group()
+        self.assertIsNotNone(group.id)
+        self.assertEqual(group.name, "ALL MEMBERS")
+
+    def test_delete_default_group_returns_false(self):
+        default_group = GroupService.get_default_group()
+        result = GroupService.delete(default_group.id)
+        self.assertFalse(result)
+        # Group must still exist after the failed deletion
+        self.assertIsNotNone(GroupService.get_by_id(default_group.id))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -229,6 +229,30 @@ class TestGroupsUI(unittest.TestCase):
         self.assertIsNotNone(remaining)
         self.assertEqual(remaining.group_id, default_group.id)
 
+    def test_rename_all_members_group_is_blocked(self):
+        """Attempting to rename ALL MEMBERS via UI should flash an error and leave the name unchanged."""
+        default_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
+        resp = self.client.post(
+            f"/groups/{default_group.id}/edit",
+            data={"name": "Renamed", "description": ""},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(default_group)
+        self.assertEqual(default_group.name, "ALL MEMBERS")
+
+    def test_delete_all_members_group_via_ui_is_blocked(self):
+        """Attempting to delete ALL MEMBERS via UI should silently keep the group."""
+        default_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
+        gid = default_group.id
+        resp = self.client.post(f"/groups/{gid}/delete")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIsNotNone(db.session.get(Group, gid))
+
 
 # ---------------------------------------------------------------------------
 # Events UI
@@ -399,6 +423,17 @@ class TestAttendanceUI(unittest.TestCase):
             data={"member_id": str(self.member.id)},
         )
         self.assertEqual(resp.status_code, 302)
+
+    def test_attendance_page_shows_all_members_in_group_via_m2m(self):
+        """All members belonging to the event's group via m2m appear on the attendance page."""
+        second = Member(name="Bob", group_id=self.group.id)
+        db.session.add(second)
+        db.session.commit()
+
+        resp = self.client.get(f"/events/{self.event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Alice", resp.data)
+        self.assertIn(b"Bob", resp.data)
 
 
 # ---------------------------------------------------------------------------

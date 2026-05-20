@@ -156,6 +156,36 @@ class TestGroupsCRUD(unittest.TestCase):
         resp = self.client.delete("/api/groups/9999")
         self.assertEqual(resp.status_code, 404)
 
+    # ------------------------------------------------------------------
+    # ALL MEMBERS protection
+    # ------------------------------------------------------------------
+
+    def test_update_all_members_group_rename_returns_400(self):
+        resp = self.client.get("/api/groups/")
+        groups = json.loads(resp.data)
+        all_members_id = next(g["id"] for g in groups if g["name"] == "ALL MEMBERS")
+
+        resp = self.client.put(
+            f"/api/groups/{all_members_id}",
+            data=json.dumps({"name": "Renamed Group"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertIn("error", data)
+
+    def test_delete_all_members_group_returns_404(self):
+        """GroupService.delete() returns False for ALL MEMBERS; API maps that to 404."""
+        resp = self.client.get("/api/groups/")
+        groups = json.loads(resp.data)
+        all_members_id = next(g["id"] for g in groups if g["name"] == "ALL MEMBERS")
+
+        resp = self.client.delete(f"/api/groups/{all_members_id}")
+        self.assertEqual(resp.status_code, 404)
+        # Group still exists
+        get_resp = self.client.get(f"/api/groups/{all_members_id}")
+        self.assertEqual(get_resp.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

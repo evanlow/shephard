@@ -18,6 +18,7 @@ from flask_login import current_user
 
 from ..extensions import db
 from ..models.attendance import Attendance
+from ..models.group import Group
 from ..models.member import Member
 from ..routes.auth import admin_required, superuser_required
 from ..services.attendance_service import AttendanceService
@@ -278,7 +279,10 @@ def attendance(event_id: int):
     group = GroupService.get_by_id(event.group_id)
 
     expected_members = db.session.execute(
-        db.select(Member).where(Member.group_id == event.group_id).order_by(Member.name)
+        db.select(Member)
+        .join(Member.groups)
+        .where(Group.id == event.group_id)
+        .order_by(Member.name)
     ).scalars().all()
 
     records = AttendanceService.get_all(event_id=event_id)

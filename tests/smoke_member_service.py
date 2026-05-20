@@ -98,6 +98,72 @@ class TestMemberService(unittest.TestCase):
         self.assertIsNone(member)
         self.assertIsNotNone(error)
 
+    # ------------------------------------------------------------------
+    # Multi-group membership
+    # ------------------------------------------------------------------
+
+    def test_create_auto_enrolls_in_all_members_group(self):
+        member, error = MemberService.create(name="Auto Enrolled")
+        self.assertIsNone(error)
+        group_names = [g.name for g in member.groups]
+        self.assertIn("ALL MEMBERS", group_names)
+
+    def test_create_with_group_id_enrolls_in_primary_and_all_members(self):
+        group = Group(name="Worship")
+        db.session.add(group)
+        db.session.commit()
+        member, error = MemberService.create(name="Dual Member", group_id=group.id)
+        self.assertIsNone(error)
+        group_names = [g.name for g in member.groups]
+        self.assertIn("ALL MEMBERS", group_names)
+        self.assertIn("Worship", group_names)
+
+    def test_create_with_group_ids_enrolls_in_all_specified_groups(self):
+        group1 = Group(name="Youth")
+        group2 = Group(name="Choir")
+        db.session.add_all([group1, group2])
+        db.session.commit()
+        member, error = MemberService.create(
+            name="Multi Member", group_ids=[group1.id, group2.id]
+        )
+        self.assertIsNone(error)
+        group_names = [g.name for g in member.groups]
+        self.assertIn("ALL MEMBERS", group_names)
+        self.assertIn("Youth", group_names)
+        self.assertIn("Choir", group_names)
+
+    def test_create_with_invalid_group_ids_returns_error(self):
+        member, error = MemberService.create(name="Bad Groups", group_ids=[9999])
+        self.assertIsNone(member)
+        self.assertIsNotNone(error)
+
+    def test_update_with_group_ids_updates_memberships(self):
+        group = Group(name="New Group")
+        db.session.add(group)
+        db.session.commit()
+        member, _ = MemberService.create(name="To Update")
+        updated, error = MemberService.update(
+            member.id, group_ids=[group.id], groups_provided=True
+        )
+        self.assertIsNone(error)
+        group_names = [g.name for g in updated.groups]
+        self.assertIn("ALL MEMBERS", group_names)
+        self.assertIn("New Group", group_names)
+
+    def test_update_with_invalid_group_ids_returns_error(self):
+        member, _ = MemberService.create(name="To Update Bad")
+        result, error = MemberService.update(
+            member.id, group_ids=[9999], groups_provided=True
+        )
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+
+    def test_member_default_group_property_returns_all_members(self):
+        member, _ = MemberService.create(name="Default Prop Test")
+        default = member.default_group
+        self.assertIsNotNone(default)
+        self.assertEqual(default.name, "ALL MEMBERS")
+
 
 if __name__ == "__main__":
     unittest.main()
