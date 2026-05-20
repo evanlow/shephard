@@ -48,15 +48,19 @@ Commit Message Format:
   <body with details>
   
   Backend Tests: X/X passed, 0 warnings [PASS]
-  Smoke test files: smoke_auth, smoke_export, smoke_validators, smoke_mapper, smoke_excel_gen, ...
-  New smoke tests added: <list exact filenames, or "none">
   Manual Testing: [PASS] (for UI changes only)
     - [What you tested]
     - [Results]
 
-**Important:** Use ASCII characters only in commit messages (no Unicode/emoji).
-  ✅ [PASS], [OK], [DONE], [FAIL]
-  ❌ ✓, ✗, �	 (causes PowerShell encoding errors)
+Approved ASCII replacements:
+  [PASS]  == previously ✓
+  [FAIL]  == previously ✗
+  [OK]    == previously ✓
+  [DONE]  == previously ✓
+  [TODO]  == previously ?
+  [WAIT]  == previously ⏳
+  ->      == previously →
+  -       == previously •
 ```
 
 ---
@@ -1748,7 +1752,7 @@ Before writing ANY new code that uses existing classes/methods:
 - [ ] Existing tests found for each (test_*.py files)
 - [ ] Existing tests read and APIs documented
 - [ ] Constructor signatures verified (param order, types, required vs optional)
-- [ ] Method signatures verified (names, param counts, return types)
+- [ ] Method signatures verified (names, params, return types)
 - [ ] Attribute names verified (singular/plural, exact spelling)
 - [ ] Enum values verified (actual values, not assumed)
 - [ ] Integration patterns verified (how components interact)
@@ -2118,8 +2122,8 @@ Manual Smoke Test (skipped):
 
 **The Incident Timeline:**
 1. **First commit (0e64b72):** "Fix form submission bug" - claimed to remove field clearing
-2. **User test:** "Same problem persists" - form still not working
-3. **Debugging discovery:** THREE separate bugs were present:
+2. User test:** "Same problem persists" - form still not working
+3. Debugging discovery:** THREE separate bugs were present:
    - Bug #1: Disabled form fields (don't submit values)
    - Bug #2: JavaScript syntax error (missing closing brace)
    - Bug #3: if/elif logic bug in Python (audio field check always true)
@@ -2664,8 +2668,6 @@ Despite the inefficient approach, we achieved:
 **Lesson learned:** Create test suite FIRST. Test EVERY change. Manual + automated testing catches bugs before users do.
 
 ---
-
-
 
 ### Sprint 3 Lessons Learned (November 24-25, 2025)
 
@@ -3465,71 +3467,6 @@ The detailed sprint and module metrics below this directive were originally capt
 For current project status and auditable checkpoints, use:
 - `session_log.md` for live KPI and test execution cadence
 - Local test output (`pytest`) for authoritative test and warning counts in this repository
-
----
-
-## 📌 Summary: Key Takeaways
-
-### The Core Truth
-**"100% backend tests passing ≠ working application"**
-- Backend tests verify logic correctness
-- Manual testing verifies user experience
-- Both required for UI changes
-
-### The Five Principles (In Order)
-0. **Virtual Environment First** - Always verify before running commands
-1. **100% Test Pass + Zero Warnings** - Non-negotiable baseline
-2. **Verify First, Code Second** - Research existing code before changing
-3. **Defensive Programming** - Handle None, validate inputs, check bounds
-4. **Test Incrementally** - Build and verify in small steps
-5. **Manual UI Testing** - Required for any HTML/CSS/JS changes
-
-### The Critical Workflow
-
-**For Backend Changes:**
-```bash
-1. ✅ Verify venv active
-2. ✅ Run baseline tests
-3. 🔧 Make changes
-4. ✅ Run tests again
-5. ✅ All pass → Commit
-```
-
-**For UI Changes:**
-```bash
-1. ✅ Verify venv active
-2. ✅ Run baseline tests
-3. 🔧 Make changes (HTML/CSS/JS)
-4. ✅ Run backend tests
-5. 👁️ Manual smoke test (2-5 min)
-6. 👁️ Check browser console (F12)
-7. 👁️ Test critical flows
-8. ✅ All pass → Document manual testing → Commit
-```
-
-### The Most Common Mistakes
-1. ❌ Skipping manual testing for "small" UI changes
-2. ❌ Assuming backend tests catch UI bugs
-3. ❌ Not checking browser console for errors
-4. ❌ Deploying without actually clicking buttons
-5. ❌ Ignoring warnings ("they're just warnings")
-
-### The Cost of Shortcuts
-- Skip 2-minute manual test → Spend 45+ minutes debugging
-- Ignore warnings → Breaking changes in future versions
-- Assume without verifying → Hours fixing wrong implementation
-- Make multiple changes → Can't identify what broke
-
-### The Discipline That Pays Off
-- Manual testing every UI change → Catch 90% of bugs before deployment
-- Zero warnings policy → Clean, maintainable codebase  
-- Incremental testing → Fast debugging, clear git history
-- Research APIs first → 44% reduction in debugging time
-
-### Remember
-> "It's not exactly reassuring that the initial set of tests still let this issue happen"
-
-Tests are tools, not guarantees. The best test is actually using your application.
 
 ---
 
