@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
+from app.models.group import Group
 from app.models.user import User
 
 
@@ -137,6 +138,19 @@ class TestGroupsCRUD(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 404)
+
+    def test_update_all_members_group_rename_returns_400(self):
+        default_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
+        group_id = default_group.id
+
+        resp = self.client.put(
+            f"/api/groups/{group_id}",
+            data=json.dumps({"name": "Renamed Default"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
 
     def test_delete_group_returns_204(self):
         create_resp = self.client.post(

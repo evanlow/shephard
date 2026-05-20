@@ -81,6 +81,14 @@ class TestGroupService(unittest.TestCase):
     def test_delete_returns_false_for_missing(self):
         self.assertFalse(GroupService.delete(9999))
 
+    def test_delete_default_group_returns_false(self):
+        default_group = GroupService.get_default_group()
+        self.assertFalse(GroupService.delete(default_group.id))
+
+    def test_ensure_default_group_commits_and_returns_group(self):
+        default_group = GroupService.ensure_default_group()
+        self.assertEqual(default_group.name, "ALL MEMBERS")
+
     def test_delete_unassigns_members_before_group_removal(self):
         group = GroupService.create(name="Member Group")
         member = Member(name="Alice", group_id=group.id)

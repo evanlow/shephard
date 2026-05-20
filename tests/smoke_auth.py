@@ -89,6 +89,22 @@ class TestLoginPost(unittest.TestCase):
         resp = self.client.post("/login", data={})
         self.assertEqual(resp.status_code, 400)
 
+    def test_login_ignores_external_next_and_redirects_dashboard(self):
+        resp = self.client.post(
+            "/login?next=//evil.example.com",
+            data={"username": "admin", "password": "password123"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/dashboard", resp.headers["Location"])
+
+    def test_login_honors_relative_next_redirect(self):
+        resp = self.client.post(
+            "/login?next=/members",
+            data={"username": "admin", "password": "password123"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/members"))
+
 
 class TestDashboard(unittest.TestCase):
     def setUp(self):
@@ -229,6 +245,66 @@ class TestUserManagement(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_create_user_missing_username_returns_400(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            "/admin/users/new",
+            data={
+                "username": "",
+                "email": "new2@test.com",
+                "password": "password123",
+                "confirm_password": "password123",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_user_missing_email_returns_400(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            "/admin/users/new",
+            data={
+                "username": "new2",
+                "email": "",
+                "password": "password123",
+                "confirm_password": "password123",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_user_missing_password_returns_400(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            "/admin/users/new",
+            data={
+                "username": "new2",
+                "email": "new2@test.com",
+                "password": "",
+                "confirm_password": "",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_toggle_admin_user_not_found_redirects(self):
+        self._login_as_superuser()
+        resp = self.client.post("/admin/users/999999/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_toggle_admin_cannot_change_self(self):
+        self._login_as_superuser()
+        resp = self.client.post(f"/admin/users/{self.superuser.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_toggle_admin_cannot_change_superuser(self):
+        self._login_as_superuser()
+        target = _create_user("other_su", "other_su@test.com", "password123", is_superuser=True)
+        resp = self.client.post(f"/admin/users/{target.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_delete_user_not_found_redirects(self):
+        self._login_as_superuser()
+        resp = self.client.post("/admin/users/999999/delete", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
 
     def test_delete_user_success(self):
         self._login_as_superuser()

@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from app import create_app
 from app.extensions import db
+from config import config as app_config
 
 
 class TestSQLiteSchemaUpgrade(unittest.TestCase):
@@ -23,8 +24,9 @@ class TestSQLiteSchemaUpgrade(unittest.TestCase):
         fd, db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
 
-        previous_db_url = os.environ.get("DATABASE_URL")
-        os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+        development_cfg = app_config["development"]
+        previous_db_url = development_cfg.SQLALCHEMY_DATABASE_URI
+        development_cfg.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
 
         try:
             legacy_app = Flask(__name__)
@@ -79,10 +81,7 @@ class TestSQLiteSchemaUpgrade(unittest.TestCase):
             self.assertIn("is_admin", user_columns)
             self.assertIn("marked_by", attendance_columns)
         finally:
-            if previous_db_url is None:
-                os.environ.pop("DATABASE_URL", None)
-            else:
-                os.environ["DATABASE_URL"] = previous_db_url
+            development_cfg.SQLALCHEMY_DATABASE_URI = previous_db_url
 
             if os.path.exists(db_path):
                 os.remove(db_path)

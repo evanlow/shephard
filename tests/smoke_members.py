@@ -163,6 +163,70 @@ class TestMembersCRUD(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    def test_update_member_without_name_or_groups_returns_400(self):
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Noop Test"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_member_with_group_ids_scalar(self):
+        group = Group(name="Scalar Group")
+        db.session.add(group)
+        db.session.commit()
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Scalar Assigned", "group_ids": group.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        self.assertIn(group.id, data["group_ids"])
+
+    def test_create_member_with_group_ids_list(self):
+        g1 = Group(name="List Group 1")
+        g2 = Group(name="List Group 2")
+        db.session.add_all([g1, g2])
+        db.session.commit()
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "List Assigned", "group_ids": [g1.id, g2.id, ""]}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        self.assertIn(g1.id, data["group_ids"])
+        self.assertIn(g2.id, data["group_ids"])
+
+    def test_create_member_with_invalid_group_id_returns_400(self):
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Bad Group", "group_id": 999999}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_update_member_with_invalid_group_id_returns_400(self):
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Needs Update"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"group_id": 999999}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
     def test_delete_member_returns_204(self):
         create_resp = self.client.post(
             "/api/members/",

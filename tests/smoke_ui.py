@@ -143,6 +143,48 @@ class TestMembersUI(unittest.TestCase):
         db.session.refresh(member)
         self.assertEqual(member.name, "Dave Black")
 
+    def test_create_member_invalid_group_id_string_falls_back(self):
+        resp = self.client.post(
+            "/members",
+            data={"name": "Invalid Group Id", "group_id": "not-a-number"},
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_create_member_error_flash_for_missing_group(self):
+        resp = self.client.post(
+            "/members",
+            data={"name": "Bad Group", "group_id": "999999"},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"not found", resp.data)
+
+    def test_update_member_not_found_redirects(self):
+        resp = self.client.post(
+            "/members/999999/edit",
+            data={"name": "Nobody", "group_id": "0"},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Member not found", resp.data)
+
+    def test_update_member_invalid_group_redirects_back_to_edit(self):
+        member = Member(name="Needs Valid Group")
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/edit",
+            data={"name": "Needs Valid Group", "group_ids": ["999999"]},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(f"/members/{member.id}/edit", resp.headers["Location"])
+
+    def test_delete_member_not_found_redirects(self):
+        resp = self.client.post("/members/999999/delete", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Member not found", resp.data)
+
     def test_delete_member_redirects(self):
         member = Member(name="Eve Brown")
         db.session.add(member)
@@ -190,6 +232,13 @@ class TestGroupsUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"required", resp.data)
 
+    def test_create_group_duplicate_name_redirects_with_flash(self):
+        db.session.add(Group(name="Dupe Group"))
+        db.session.commit()
+        resp = self.client.post("/groups", data={"name": "Dupe Group"}, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"already exists", resp.data)
+
     def test_edit_group_form_loads(self):
         group = Group(name="Youth")
         db.session.add(group)
@@ -197,6 +246,11 @@ class TestGroupsUI(unittest.TestCase):
         resp = self.client.get(f"/groups/{group.id}/edit")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Youth", resp.data)
+
+    def test_edit_group_form_not_found_redirects(self):
+        resp = self.client.get("/groups/999999/edit", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Group not found", resp.data)
 
     def test_update_group_redirects(self):
         group = Group(name="Old Name")
@@ -208,6 +262,39 @@ class TestGroupsUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         db.session.refresh(group)
         self.assertEqual(group.name, "New Name")
+
+    def test_update_all_members_group_rename_blocked(self):
+        default_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
+        resp = self.client.post(
+            f"/groups/{default_group.id}/edit",
+            data={"name": "Blocked Rename", "description": ""},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"cannot be renamed", resp.data)
+
+    def test_update_group_missing_name_redirects_with_flash(self):
+        group = Group(name="Needs Name")
+        db.session.add(group)
+        db.session.commit()
+        resp = self.client.post(
+            f"/groups/{group.id}/edit",
+            data={"name": "", "description": "desc"},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"required", resp.data)
+
+    def test_update_group_not_found_redirects_with_flash(self):
+        resp = self.client.post(
+            "/groups/999999/edit",
+            data={"name": "Ghost", "description": ""},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Group not found", resp.data)
 
     def test_delete_group_unassigns_members(self):
         group = Group(name="To Delete")
@@ -228,6 +315,11 @@ class TestGroupsUI(unittest.TestCase):
         remaining = db.session.get(Member, mid)
         self.assertIsNotNone(remaining)
         self.assertEqual(remaining.group_id, default_group.id)
+
+    def test_delete_group_not_found_redirects_with_flash(self):
+        resp = self.client.post("/groups/999999/delete", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Group not found", resp.data)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +379,41 @@ class TestEventsUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"required", resp.data)
 
+    def test_create_event_missing_date_redirects_with_flash(self):
+        resp = self.client.post(
+            "/events",
+            data={"name": "No Date", "date": "", "group_id": str(self.group.id)},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Date and time are required", resp.data)
+
+    def test_create_event_invalid_date_redirects_with_flash(self):
+        resp = self.client.post(
+            "/events",
+            data={
+                "name": "Bad Date",
+                "date": "not-a-date",
+                "group_id": str(self.group.id),
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Invalid date/time format", resp.data)
+
+    def test_create_event_unknown_group_redirects_with_flash(self):
+        resp = self.client.post(
+            "/events",
+            data={
+                "name": "Unknown Group Event",
+                "date": "2026-05-03T08:00",
+                "group_id": "999999",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"not found", resp.data)
+
     def test_delete_event_redirects(self):
         event = Event(name="To Delete", date=datetime.now(timezone.utc), group_id=self.group.id)
         db.session.add(event)
@@ -295,6 +422,11 @@ class TestEventsUI(unittest.TestCase):
         resp = self.client.post(f"/events/{eid}/delete")
         self.assertEqual(resp.status_code, 302)
         self.assertIsNone(db.session.get(Event, eid))
+
+    def test_delete_event_not_found_redirects_with_flash(self):
+        resp = self.client.post("/events/999999/delete", follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Event not found", resp.data)
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +485,24 @@ class TestAttendanceUI(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 302)
 
+    def test_mark_present_missing_member_id_redirects_with_flash(self):
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/mark",
+            data={},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Member ID is required", resp.data)
+
+    def test_mark_absent_missing_member_id_redirects_with_flash(self):
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/unmark",
+            data={},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Member ID is required", resp.data)
+
     def test_mark_present_creates_record(self):
         from app.models.attendance import Attendance
         self.client.post(
@@ -399,6 +549,49 @@ class TestAttendanceUI(unittest.TestCase):
             data={"member_id": str(self.member.id)},
         )
         self.assertEqual(resp.status_code, 302)
+
+    def test_mark_present_error_is_flashed_for_ineligible_member(self):
+        outsider_group = Group(name="Outsiders")
+        db.session.add(outsider_group)
+        db.session.commit()
+        outsider = Member(name="Outsider", group_id=outsider_group.id)
+        db.session.add(outsider)
+        db.session.commit()
+
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/mark",
+            data={"member_id": str(outsider.id)},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"not assigned to this event", resp.data)
+
+    def test_all_members_event_includes_cross_group_memberships(self):
+        """ALL MEMBERS event should include members linked through memberships, not only primary group_id."""
+        all_members_group = db.session.execute(
+            db.select(Group).where(Group.name == "ALL MEMBERS")
+        ).scalar_one()
+        choir = Group(name="Choir")
+        db.session.add(choir)
+        db.session.commit()
+
+        # Primary group is Choir, but this member is also in ALL MEMBERS.
+        cross_group_member = Member(name="Cross Group", group_id=choir.id)
+        cross_group_member.groups.append(all_members_group)
+        db.session.add(cross_group_member)
+        db.session.commit()
+
+        all_members_event = Event(
+            name="All Members Service",
+            date=datetime.now(timezone.utc),
+            group_id=all_members_group.id,
+        )
+        db.session.add(all_members_event)
+        db.session.commit()
+
+        resp = self.client.get(f"/events/{all_members_event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Cross Group", resp.data)
 
 
 # ---------------------------------------------------------------------------

@@ -211,6 +211,11 @@ class TestAttendanceCRUD(unittest.TestCase):
         self.assertEqual(data["present_count"], 1)
         self.assertEqual(data["absent_count"], 1)
 
+    def test_event_status_not_found_returns_404(self):
+        resp = self.client.get("/api/attendance/event/999999/status")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("error", json.loads(resp.data))
+
 
 if __name__ == "__main__":
     unittest.main()

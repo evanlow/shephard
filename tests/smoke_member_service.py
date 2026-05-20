@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app
 from app.extensions import db
 from app.models.group import Group
+from app.services.group_service import GroupService
 from app.services.member_service import MemberService
 
 
@@ -97,6 +98,52 @@ class TestMemberService(unittest.TestCase):
         member, error = MemberService.create(name="Bad Group", group_id=9999)
         self.assertIsNone(member)
         self.assertIsNotNone(error)
+
+    def test_create_with_multiple_groups_dedupes_and_preserves_default(self):
+        g1 = Group(name="Music")
+        g2 = Group(name="Choir")
+        db.session.add_all([g1, g2])
+        db.session.commit()
+
+        member, error = MemberService.create(
+            name="Multi",
+            group_id=g1.id,
+            group_ids=[g1.id, None, g2.id, g1.id],
+        )
+        self.assertIsNone(error)
+        self.assertEqual(member.group_id, g1.id)
+        names = {group.name for group in member.groups}
+        self.assertIn("ALL MEMBERS", names)
+        self.assertIn("Music", names)
+        self.assertIn("Choir", names)
+
+    def test_create_invalid_secondary_group_returns_error(self):
+        g1 = Group(name="Primary")
+        db.session.add(g1)
+        db.session.commit()
+
+        member, error = MemberService.create(
+            name="Bad Secondary",
+            group_ids=[g1.id, 999999],
+        )
+        self.assertIsNone(member)
+        self.assertIn("not found", error)
+
+    def test_update_with_invalid_group_returns_error(self):
+        member, _ = MemberService.create(name="Updatable")
+        updated, error = MemberService.update(
+            member.id,
+            group_ids=[999999],
+            groups_provided=True,
+        )
+        self.assertIsNone(updated)
+        self.assertIn("not found", error)
+
+    def test_create_with_default_group_as_primary(self):
+        default_group = GroupService.get_default_group()
+        member, error = MemberService.create(name="Default Primary", group_id=default_group.id)
+        self.assertIsNone(error)
+        self.assertEqual(member.group_id, default_group.id)
 
 
 if __name__ == "__main__":
