@@ -2,11 +2,51 @@ from __future__ import annotations
 
 from flask import Flask, jsonify, redirect, request, url_for
 from flask_login import current_user
+from sqlalchemy import text
 
 from config import config
 from .extensions import db, login_manager
 from .models.user import User
 from .routes import attendance, auth, events, groups, members, ui
+
+
+def _ensure_sqlite_schema_compatibility() -> None:
+    """Apply additive schema fixes for legacy SQLite databases.
+
+    SQLite's ALTER TABLE support is limited and db.create_all() does not add
+    missing columns on existing tables. This keeps local/dev databases usable
+    after pulling model updates.
+    """
+
+    if db.engine.dialect.name != "sqlite":
+        return
+
+    with db.engine.begin() as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table'")
+            )
+        }
+
+        if "users" in tables:
+            user_columns = {
+                row[1] for row in conn.execute(text("PRAGMA table_info(users)"))
+            }
+            if "is_admin" not in user_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users "
+                        "ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
+        if "attendance" in tables:
+            attendance_columns = {
+                row[1] for row in conn.execute(text("PRAGMA table_info(attendance)"))
+            }
+            if "marked_by" not in attendance_columns:
+                conn.execute(text("ALTER TABLE attendance ADD COLUMN marked_by INTEGER"))
 
 
 def create_app(env: str = "development") -> Flask:
@@ -95,6 +135,11 @@ def create_app(env: str = "development") -> Flask:
     def init_db():
         with app.app_context():
             db.create_all()
+            _ensure_sqlite_schema_compatibility()
         print("Database tables created.")
+
+    with app.app_context():
+        db.create_all()
+        _ensure_sqlite_schema_compatibility()
 
     return app
