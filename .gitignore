@@ -13,6 +13,9 @@ venv/
 __pycache__/
 *.py[cod]
 
+# Coverage data
+.coverage
+
 # Temp scripts (Principle 10 pattern)
 _*.py
 !**/__init__.py

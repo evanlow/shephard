@@ -274,9 +274,8 @@ def attendance(event_id: int):
 
     group = GroupService.get_by_id(event.group_id)
 
-    expected_members = db.session.execute(
-        db.select(Member).where(Member.group_id == event.group_id).order_by(Member.name)
-    ).scalars().all()
+    expected_members = list(event.group.members)
+    expected_members.sort(key=lambda member: member.name)
 
     records = AttendanceService.get_all(event_id=event_id)
     attendance_by_member = {r.member_id: r for r in records}
