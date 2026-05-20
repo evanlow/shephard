@@ -62,6 +62,8 @@
 <div class="d-flex gap-2 mb-3">
   <a href="{{ url_for('ui.attendance', event_id=selected_event.id) }}"
      class="btn btn-primary btn-sm">Take / Edit Attendance</a>
+  <a href="{{ url_for('ui.attendance_pdf', event_id=selected_event.id) }}"
+     class="btn btn-outline-secondary btn-sm">&#128196; Export PDF</a>
 </div>
 
 <div class="row g-3">

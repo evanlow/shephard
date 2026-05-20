@@ -30,6 +30,10 @@
         <span class="badge bg-danger">Absent</span>
         <strong id="absent-count">{{ absent_count }}</strong>
       </div>
+      <div class="ms-auto">
+        <a href="{{ url_for('ui.attendance_pdf', event_id=event.id) }}"
+           class="btn btn-outline-secondary btn-sm">&#128196; Export PDF</a>
+      </div>
     </div>
   </div>
 </div>

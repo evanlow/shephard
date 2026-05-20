@@ -9,8 +9,11 @@ the needed query.
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+import io
+
+from flask import Blueprint, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 
 from ..extensions import db
@@ -322,6 +325,104 @@ def mark_absent(event_id: int):
     if records:
         AttendanceService.update(records[0].id, present=False)
     return redirect(url_for("ui.attendance", event_id=event_id))
+
+
+@bp.get("/events/<int:event_id>/attendance/pdf")
+@admin_required
+def attendance_pdf(event_id: int):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    status, error = AttendanceService.get_event_status(event_id)
+    if error:
+        flash("Event not found.", "error")
+        return redirect(url_for("ui.events"))
+
+    event = EventService.get_by_id(event_id)
+    group = GroupService.get_by_id(event.group_id) if event else None
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=2 * cm, bottomMargin=2 * cm)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Title
+    event_name = escape(status["event_name"])
+    elements.append(Paragraph(f"Attendance Report: {event_name}", styles["Title"]))
+    date_str = event.date.strftime("%A, %d %B %Y — %H:%M") if event else ""
+    group_str = f"Group: {escape(group.name)}" if group else ""
+    if date_str or group_str:
+        elements.append(Paragraph(f"{date_str}{'  |  ' + group_str if group_str else ''}", styles["Normal"]))
+    elements.append(Spacer(1, 0.4 * cm))
+
+    # Summary row
+    summary_data = [
+        ["Expected", "Present", "Absent"],
+        [str(status["expected_count"]), str(status["present_count"]), str(status["absent_count"])],
+    ]
+    summary_table = Table(summary_data, colWidths=[4 * cm, 4 * cm, 4 * cm])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6c757d")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (1, 1), (1, 1), colors.HexColor("#d4edda")),
+        ("BACKGROUND", (2, 1), (2, 1), colors.HexColor("#f8d7da")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.5 * cm))
+
+    # Attendance table
+    present_ids = {m["id"] for m in status["present_members"]}
+    all_members = status["expected_members"]
+    table_data = [["#", "Member Name", "Status"]]
+    for i, m in enumerate(all_members, start=1):
+        is_present = m["id"] in present_ids
+        table_data.append([str(i), m["name"], "Present" if is_present else "Absent"])
+
+    col_widths = [1.2 * cm, None, 3.5 * cm]
+    att_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    row_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#343a40")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (2, 0), (2, -1), "CENTER"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8f9fa")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for row_idx, m in enumerate(all_members, start=1):
+        is_present = m["id"] in present_ids
+        if is_present:
+            row_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), colors.HexColor("#198754")))
+            row_styles.append(("FONTNAME", (2, row_idx), (2, row_idx), "Helvetica-Bold"))
+        else:
+            row_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), colors.HexColor("#dc3545")))
+
+    att_table.setStyle(TableStyle(row_styles))
+    elements.append(att_table)
+
+    doc.build(elements)
+    buf.seek(0)
+
+    safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in status["event_name"])
+    filename = f"attendance_{safe_name}.pdf"
+    return send_file(buf, mimetype="application/pdf",
+                     as_attachment=True, download_name=filename)
 
 
 # ---------------------------------------------------------------------------

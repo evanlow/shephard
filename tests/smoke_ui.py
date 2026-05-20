@@ -482,5 +482,97 @@ class TestDashboardSummary(unittest.TestCase):
         self.assertIn(b"1", resp.data)
 
 
+# ---------------------------------------------------------------------------
+# Attendance PDF export
+# ---------------------------------------------------------------------------
+
+class TestAttendancePDF(unittest.TestCase):
+    def setUp(self):
+        self.app = _make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        _create_superuser()
+        self.group = Group(name="Choir")
+        db.session.add(self.group)
+        db.session.commit()
+        self.member = Member(name="John Doe", group_id=self.group.id)
+        db.session.add(self.member)
+        db.session.commit()
+        self.event = Event(
+            name="Sunday Service",
+            date=datetime(2026, 5, 3, 8, 0),
+            group_id=self.group.id,
+        )
+        db.session.add(self.event)
+        db.session.commit()
+        self.client = self.app.test_client()
+        _login(self.client)
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def test_pdf_unauthenticated_redirects(self):
+        app = _make_app()
+        ctx = app.app_context()
+        ctx.push()
+        try:
+            db.create_all()
+            _create_superuser(username="unauth-admin", email="unauth-admin@test.com")
+            group = Group(name="Unauth Choir")
+            db.session.add(group)
+            db.session.commit()
+            event = Event(
+                name="Unauth Service",
+                date=datetime(2026, 5, 3, 8, 0),
+                group_id=group.id,
+            )
+            db.session.add(event)
+            db.session.commit()
+
+            c = app.test_client()
+            resp = c.get(f"/events/{event.id}/attendance/pdf")
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.headers["Location"])
+        finally:
+            db.session.remove()
+            db.drop_all()
+            ctx.pop()
+
+    def test_pdf_returns_200_and_pdf_content_type(self):
+        resp = self.client.get(f"/events/{self.event.id}/attendance/pdf")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/pdf", resp.content_type)
+
+    def test_pdf_response_is_non_empty(self):
+        resp = self.client.get(f"/events/{self.event.id}/attendance/pdf")
+        self.assertGreater(len(resp.data), 0)
+        # PDF files start with %PDF
+        self.assertTrue(resp.data.startswith(b"%PDF"))
+
+    def test_pdf_has_attachment_header(self):
+        resp = self.client.get(f"/events/{self.event.id}/attendance/pdf")
+        disposition = resp.headers.get("Content-Disposition", "")
+        self.assertIn("attachment", disposition)
+        self.assertIn(".pdf", disposition)
+
+    def test_pdf_not_found_event_redirects(self):
+        resp = self.client.get("/events/9999/attendance/pdf")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_pdf_with_present_member(self):
+        from app.models.attendance import Attendance
+        rec = Attendance(
+            event_id=self.event.id, member_id=self.member.id, present=True
+        )
+        db.session.add(rec)
+        db.session.commit()
+        resp = self.client.get(f"/events/{self.event.id}/attendance/pdf")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data.startswith(b"%PDF"))
+
+
 if __name__ == "__main__":
     unittest.main()
