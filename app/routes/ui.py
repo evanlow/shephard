@@ -9,6 +9,7 @@ the needed query.
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 
 import io
 
@@ -350,9 +351,10 @@ def attendance_pdf(event_id: int):
     elements = []
 
     # Title
-    elements.append(Paragraph(f"Attendance Report: {status['event_name']}", styles["Title"]))
+    event_name = escape(status["event_name"])
+    elements.append(Paragraph(f"Attendance Report: {event_name}", styles["Title"]))
     date_str = event.date.strftime("%A, %d %B %Y — %H:%M") if event else ""
-    group_str = f"Group: {group.name}" if group else ""
+    group_str = f"Group: {escape(group.name)}" if group else ""
     if date_str or group_str:
         elements.append(Paragraph(f"{date_str}{'  |  ' + group_str if group_str else ''}", styles["Normal"]))
     elements.append(Spacer(1, 0.4 * cm))

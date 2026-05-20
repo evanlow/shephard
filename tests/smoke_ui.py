@@ -516,12 +516,30 @@ class TestAttendancePDF(unittest.TestCase):
 
     def test_pdf_unauthenticated_redirects(self):
         app = _make_app()
-        with app.app_context():
+        ctx = app.app_context()
+        ctx.push()
+        try:
             db.create_all()
-        c = app.test_client()
-        resp = c.get(f"/events/{self.event.id}/attendance/pdf")
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login", resp.headers["Location"])
+            _create_superuser(username="unauth-admin", email="unauth-admin@test.com")
+            group = Group(name="Unauth Choir")
+            db.session.add(group)
+            db.session.commit()
+            event = Event(
+                name="Unauth Service",
+                date=datetime(2026, 5, 3, 8, 0),
+                group_id=group.id,
+            )
+            db.session.add(event)
+            db.session.commit()
+
+            c = app.test_client()
+            resp = c.get(f"/events/{event.id}/attendance/pdf")
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.headers["Location"])
+        finally:
+            db.session.remove()
+            db.drop_all()
+            ctx.pop()
 
     def test_pdf_returns_200_and_pdf_content_type(self):
         resp = self.client.get(f"/events/{self.event.id}/attendance/pdf")
