@@ -348,5 +348,57 @@ class TestUserCreationSetsIsAdmin(unittest.TestCase):
         self.assertFalse(user.is_superuser)
 
 
+class TestToggleAdmin(unittest.TestCase):
+    """Superuser can grant or revoke admin flag on other users."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        self.client = self.app.test_client()
+        self.su = _create_user("su", "su@test.com", "password123", is_admin=True, is_superuser=True)
+        self.norole = _create_user("norole", "norole@test.com", "password123", is_admin=False)
+        self.admin = _create_user("admin2", "admin2@test.com", "password123", is_admin=True)
+        _login(self.client, "su", "password123")
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def test_grant_admin_to_norole_user(self):
+        resp = self.client.post(f"/admin/users/{self.norole.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(self.norole)
+        self.assertTrue(self.norole.is_admin)
+
+    def test_revoke_admin_from_admin_user(self):
+        resp = self.client.post(f"/admin/users/{self.admin.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(self.admin)
+        self.assertFalse(self.admin.is_admin)
+
+    def test_cannot_toggle_own_account(self):
+        resp = self.client.post(f"/admin/users/{self.su.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(self.su)
+        # Superuser status must be unchanged
+        self.assertTrue(self.su.is_superuser)
+
+    def test_cannot_toggle_superuser_account(self):
+        su2 = _create_user("su2", "su2@test.com", "password123", is_admin=True, is_superuser=True)
+        resp = self.client.post(f"/admin/users/{su2.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(su2)
+        self.assertTrue(su2.is_superuser)
+
+    def test_non_superuser_cannot_toggle_admin(self):
+        self.client.post("/logout")
+        _login(self.client, "admin2", "password123")
+        resp = self.client.post(f"/admin/users/{self.norole.id}/toggle-admin")
+        self.assertEqual(resp.status_code, 403)
+
+
 if __name__ == "__main__":
     unittest.main()
