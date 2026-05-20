@@ -20,6 +20,10 @@
     }
     .btn-primary { background: #4f46e5; color: #fff; }
     .btn-primary:hover { background: #4338ca; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-warning { background: #d97706; color: #fff; }
+    .btn-warning:hover { background: #b45309; }
     .btn-danger { background: #ef4444; color: #fff; }
     .btn-danger:hover { background: #dc2626; }
     .btn-ghost { color: #6b7280; }
@@ -85,13 +89,26 @@
           <td>{{ user.created_at.strftime('%d %b %Y') }}</td>
           <td style="text-align:right;">
             {% if user.id != current_user.id %}
-            <form method="post"
-                  action="{{ url_for('auth.delete_user', user_id=user.id) }}"
-                  onsubmit="return confirm('Delete user {{ user.username }}?')">
-              <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.3rem 0.7rem;">
-                Delete
-              </button>
-            </form>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap;">
+              {% if not user.is_superuser %}
+              {% set toggle_message = "Revoke admin access for " ~ user.username ~ "?" if user.is_admin else "Grant admin access to " ~ user.username ~ "?" %}
+              <form method="post"
+                    action="{{ url_for('auth.toggle_admin', user_id=user.id) }}"
+                    onsubmit='return confirm({{ toggle_message|tojson }})'>
+                <button type="submit" class="btn {% if user.is_admin %}btn-warning{% else %}btn-success{% endif %}"
+                        style="font-size:0.8rem;padding:0.3rem 0.7rem;">
+                  {% if user.is_admin %}Revoke Admin{% else %}Make Admin{% endif %}
+                </button>
+              </form>
+              {% endif %}
+              <form method="post"
+                    action="{{ url_for('auth.delete_user', user_id=user.id) }}"
+                    onsubmit='return confirm({{ ("Delete user " ~ user.username ~ "?")|tojson }})'>
+                <button type="submit" class="btn btn-danger" style="font-size:0.8rem;padding:0.3rem 0.7rem;">
+                  Delete
+                </button>
+              </form>
+            </div>
             {% endif %}
           </td>
         </tr>

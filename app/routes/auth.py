@@ -91,6 +91,30 @@ def create_user():
     return redirect(url_for("auth.list_users"))
 
 
+@bp.post("/admin/users/<int:user_id>/toggle-admin")
+@superuser_required
+def toggle_admin(user_id: int):
+    if user_id == current_user.id:
+        flash("You cannot change your own admin status.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    if user.is_superuser:
+        flash("Superuser accounts cannot be modified this way.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user.is_admin = not user.is_admin
+    db.session.commit()
+
+    status = "granted" if user.is_admin else "revoked"
+    flash(f"Admin access {status} for '{user.username}'.", "success")
+    return redirect(url_for("auth.list_users"))
+
+
 @bp.post("/admin/users/<int:user_id>/delete")
 @superuser_required
 def delete_user(user_id: int):
