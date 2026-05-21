@@ -358,6 +358,60 @@ class TestEventsUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"required", resp.data)
 
+    # ------------------------------------------------------------------
+    # Archive / Unarchive
+    # ------------------------------------------------------------------
+
+    def test_archive_event_redirects(self):
+        event = Event(name="To Archive", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        resp = self.client.post(f"/events/{event.id}/archive")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_archive_event_sets_is_archived(self):
+        event = Event(name="Archive Me", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        self.client.post(f"/events/{event.id}/archive")
+        db.session.refresh(event)
+        self.assertTrue(event.is_archived)
+
+    def test_archived_event_excluded_from_active_list(self):
+        event = Event(name="Hidden Event", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        self.client.post(f"/events/{event.id}/archive")
+        resp = self.client.get("/events")
+        self.assertEqual(resp.status_code, 200)
+        # Event should not appear in the active events table
+        from app.services.event_service import EventService
+        active = EventService.get_all()
+        self.assertNotIn(event.id, [e.id for e in active])
+
+    def test_unarchive_event_redirects(self):
+        event = Event(name="To Unarchive", date=datetime.now(timezone.utc), group_id=self.group.id, is_archived=True)
+        db.session.add(event)
+        db.session.commit()
+        resp = self.client.post(f"/events/{event.id}/unarchive")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_unarchive_event_clears_is_archived(self):
+        event = Event(name="Restore Me", date=datetime.now(timezone.utc), group_id=self.group.id, is_archived=True)
+        db.session.add(event)
+        db.session.commit()
+        self.client.post(f"/events/{event.id}/unarchive")
+        db.session.refresh(event)
+        self.assertFalse(event.is_archived)
+
+    def test_archive_not_found_redirects(self):
+        resp = self.client.post("/events/9999/archive")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_unarchive_not_found_redirects(self):
+        resp = self.client.post("/events/9999/unarchive")
+        self.assertEqual(resp.status_code, 302)
+
 
 # ---------------------------------------------------------------------------
 # Attendance UI

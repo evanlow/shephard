@@ -213,8 +213,9 @@ def delete_group(group_id: int):
 @admin_required
 def events():
     all_events = EventService.get_all()
+    archived_events = EventService.get_all(archived=True)
     all_groups = GroupService.get_all()
-    return render_template("ui/events.html", events=all_events, groups=all_groups)
+    return render_template("ui/events.html", events=all_events, archived_events=archived_events, groups=all_groups)
 
 
 @bp.post("/events")
@@ -264,6 +265,28 @@ def delete_event(event_id: int):
         flash(error or "Event could not be deleted.", "error")
     else:
         flash(f"Event '{name}' deleted.", "success")
+    return redirect(url_for("ui.events"))
+
+
+@bp.post("/events/<int:event_id>/archive")
+@superuser_required
+def archive_event_ui(event_id: int):
+    event, error = EventService.archive(event_id)
+    if error:
+        flash(error, "error")
+    else:
+        flash(f"Event '{event.name}' archived.", "success")
+    return redirect(url_for("ui.events"))
+
+
+@bp.post("/events/<int:event_id>/unarchive")
+@superuser_required
+def unarchive_event_ui(event_id: int):
+    event, error = EventService.unarchive(event_id)
+    if error:
+        flash(error, "error")
+    else:
+        flash(f"Event '{event.name}' unarchived.", "success")
     return redirect(url_for("ui.events"))
 
 

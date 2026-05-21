@@ -85,10 +85,10 @@
             <a href="{{ url_for('ui.reports') }}?event_id={{ e.id }}"
                class="btn btn-sm btn-outline-secondary me-1">Report</a>
             {% if current_user.is_superuser %}
-            <form method="post" action="{{ url_for('ui.delete_event', event_id=e.id) }}"
+            <form method="post" action="{{ url_for('ui.archive_event_ui', event_id=e.id) }}"
                   class="d-inline"
-                  onsubmit="return confirm('Delete event \'{{ e.name }}\'?\nAll attendance records will also be deleted.');">
-              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                  onsubmit="return confirm('Archive event \'{{ e.name }}\'?\nAttendance cannot be modified while archived.');">
+              <button type="submit" class="btn btn-sm btn-outline-warning me-1">Archive</button>
             </form>
             {% endif %}
           </td>
@@ -104,6 +104,56 @@
     </table>
   </div>
 </div>
+
+{% if current_user.is_superuser and archived_events %}
+<div class="mt-5">
+  <h5 class="text-muted mb-3">
+    <span class="badge bg-secondary me-2">Archived</span>
+    Archived Events
+    <span class="badge bg-light text-dark border ms-1">{{ archived_events|length }}</span>
+  </h5>
+  <div class="card border-secondary">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm text-muted">
+        <thead class="table-secondary">
+          <tr>
+            <th>#</th>
+            <th>Event Name</th>
+            <th>Group</th>
+            <th>Date &amp; Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in archived_events %}
+          <tr>
+            <td class="small">{{ loop.index }}</td>
+            <td class="fw-semibold">{{ e.name }}</td>
+            <td>
+              <span class="badge bg-secondary">{{ e.group.name if e.group else '—' }}</span>
+            </td>
+            <td class="small">{{ e.date.strftime('%d %b %Y, %H:%M') }}</td>
+            <td>
+              <a href="{{ url_for('ui.reports') }}?event_id={{ e.id }}"
+                 class="btn btn-sm btn-outline-secondary me-1">Report</a>
+              <form method="post" action="{{ url_for('ui.unarchive_event_ui', event_id=e.id) }}"
+                    class="d-inline">
+                <button type="submit" class="btn btn-sm btn-outline-success me-1">Unarchive</button>
+              </form>
+              <form method="post" action="{{ url_for('ui.delete_event', event_id=e.id) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('Permanently delete event \'{{ e.name }}\'?\nAll attendance records will also be deleted. This cannot be undone.');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
