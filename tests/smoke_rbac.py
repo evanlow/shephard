@@ -253,6 +253,7 @@ class TestSuperuserFullAccess(unittest.TestCase):
         self.assertEqual(resp.status_code, 204)
 
     def test_superuser_can_delete_event(self):
+        self.client.post(f"/api/events/{self.event_id}/archive")
         resp = self.client.delete(f"/api/events/{self.event_id}")
         self.assertEqual(resp.status_code, 204)
 

@@ -88,12 +88,16 @@ class TestEventService(unittest.TestCase):
 
     def test_delete_removes_event(self):
         event, _ = EventService.create(name="To Delete", date=FUTURE_DATE, group_id=self.group_id)
-        result = EventService.delete(event.id)
+        EventService.archive(event.id)
+        result, error = EventService.delete(event.id)
         self.assertTrue(result)
+        self.assertIsNone(error)
         self.assertIsNone(EventService.get_by_id(event.id))
 
     def test_delete_returns_false_for_missing(self):
-        self.assertFalse(EventService.delete(9999))
+        deleted, error = EventService.delete(9999)
+        self.assertFalse(deleted)
+        self.assertIsNotNone(error)
 
     def test_get_all_returns_most_recent_first(self):
         EventService.create(
@@ -140,6 +144,70 @@ class TestEventService(unittest.TestCase):
         result, error = EventService.update(event.id)
         self.assertIsNone(result)
         self.assertEqual(error, EventService.ERROR_NO_FIELDS_TO_UPDATE)
+
+    def test_archive_sets_is_archived(self):
+        event, _ = EventService.create(name="Archivable", date=FUTURE_DATE, group_id=self.group_id)
+        self.assertFalse(event.is_archived)
+        archived, error = EventService.archive(event.id)
+        self.assertIsNone(error)
+        self.assertTrue(archived.is_archived)
+
+    def test_archive_not_found_returns_error(self):
+        result, error = EventService.archive(9999)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertIn("not found", error.lower())
+
+    def test_unarchive_clears_is_archived(self):
+        event, _ = EventService.create(name="Re-open", date=FUTURE_DATE, group_id=self.group_id)
+        EventService.archive(event.id)
+        unarchived, error = EventService.unarchive(event.id)
+        self.assertIsNone(error)
+        self.assertFalse(unarchived.is_archived)
+
+    def test_unarchive_not_found_returns_error(self):
+        result, error = EventService.unarchive(9999)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+
+    def test_update_archived_event_returns_error(self):
+        event, _ = EventService.create(name="Locked", date=FUTURE_DATE, group_id=self.group_id)
+        EventService.archive(event.id)
+        result, error = EventService.update(event.id, name="Changed")
+        self.assertIsNone(result)
+        self.assertEqual(error, EventService.ERROR_EVENT_ARCHIVED)
+
+    def test_delete_non_archived_event_returns_error(self):
+        event, _ = EventService.create(name="Live Event", date=FUTURE_DATE, group_id=self.group_id)
+        deleted, error = EventService.delete(event.id)
+        self.assertFalse(deleted)
+        self.assertEqual(error, EventService.ERROR_EVENT_NOT_ARCHIVED)
+
+    def test_get_all_default_excludes_archived(self):
+        EventService.create(name="Active", date=FUTURE_DATE, group_id=self.group_id)
+        event2, _ = EventService.create(name="Archived", date=FUTURE_DATE, group_id=self.group_id)
+        EventService.archive(event2.id)
+        results = EventService.get_all()
+        names = [e.name for e in results]
+        self.assertIn("Active", names)
+        self.assertNotIn("Archived", names)
+
+    def test_get_all_archived_true_returns_only_archived(self):
+        EventService.create(name="Active", date=FUTURE_DATE, group_id=self.group_id)
+        event2, _ = EventService.create(name="Archived", date=FUTURE_DATE, group_id=self.group_id)
+        EventService.archive(event2.id)
+        results = EventService.get_all(archived=True)
+        names = [e.name for e in results]
+        self.assertNotIn("Active", names)
+        self.assertIn("Archived", names)
+
+    def test_unarchive_allows_update_again(self):
+        event, _ = EventService.create(name="Temp Locked", date=FUTURE_DATE, group_id=self.group_id)
+        EventService.archive(event.id)
+        EventService.unarchive(event.id)
+        updated, error = EventService.update(event.id, name="Re-opened")
+        self.assertIsNone(error)
+        self.assertEqual(updated.name, "Re-opened")
 
 
 if __name__ == "__main__":

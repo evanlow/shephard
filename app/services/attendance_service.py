@@ -23,6 +23,8 @@ class AttendanceService:
         event = db.session.get(Event, event_id)
         if not event:
             return None, f"Event {event_id} not found"
+        if event.is_archived:
+            return None, "Event is archived"
         member = db.session.get(Member, member_id)
         if not member:
             return None, f"Member {member_id} not found"
@@ -74,19 +76,25 @@ class AttendanceService:
         }, None
 
     @staticmethod
-    def update(attendance_id: int, present: bool) -> Attendance | None:
+    def update(attendance_id: int, present: bool) -> tuple[Attendance | None, str | None]:
         record = db.session.get(Attendance, attendance_id)
         if not record:
-            return None
+            return None, "Attendance record not found"
+        event = db.session.get(Event, record.event_id)
+        if event and event.is_archived:
+            return None, "Event is archived"
         record.present = present
         db.session.commit()
-        return record
+        return record, None
 
     @staticmethod
-    def delete(attendance_id: int) -> bool:
+    def delete(attendance_id: int) -> tuple[bool, str | None]:
         record = db.session.get(Attendance, attendance_id)
         if not record:
-            return False
+            return False, "Attendance record not found"
+        event = db.session.get(Event, record.event_id)
+        if event and event.is_archived:
+            return False, "Event is archived"
         db.session.delete(record)
         db.session.commit()
-        return True
+        return True, None

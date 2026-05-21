@@ -316,6 +316,9 @@ class TestEventsUI(unittest.TestCase):
         db.session.add(event)
         db.session.commit()
         eid = event.id
+        # Archive the event first so it can be deleted
+        from app.services.event_service import EventService
+        EventService.archive(eid)
         resp = self.client.post(f"/events/{eid}/delete")
         self.assertEqual(resp.status_code, 302)
         self.assertIsNone(db.session.get(Event, eid))

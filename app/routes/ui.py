@@ -259,8 +259,11 @@ def delete_event(event_id: int):
         flash("Event not found.", "error")
         return redirect(url_for("ui.events"))
     name = event.name
-    EventService.delete(event_id)
-    flash(f"Event '{name}' deleted.", "success")
+    deleted, error = EventService.delete(event_id)
+    if not deleted:
+        flash(error or "Event could not be deleted.", "error")
+    else:
+        flash(f"Event '{name}' deleted.", "success")
     return redirect(url_for("ui.events"))
 
 
