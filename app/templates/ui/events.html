@@ -80,6 +80,8 @@
           <td>
             <a href="{{ url_for('ui.attendance', event_id=e.id) }}"
                class="btn btn-sm btn-primary me-1">Take Attendance</a>
+            <a href="{{ url_for('ui.edit_event', event_id=e.id) }}"
+               class="btn btn-sm btn-outline-primary me-1">Edit</a>
             <a href="{{ url_for('ui.reports') }}?event_id={{ e.id }}"
                class="btn btn-sm btn-outline-secondary me-1">Report</a>
             {% if current_user.is_superuser %}

@@ -30,6 +30,18 @@ class EventService:
         return event, None
 
     @staticmethod
+    def update(event_id: int, name: str | None = None, date: datetime | None = None) -> tuple[Event | None, str | None]:
+        event = db.session.get(Event, event_id)
+        if not event:
+            return None, "Event not found"
+        if name is not None:
+            event.name = name
+        if date is not None:
+            event.date = date
+        db.session.commit()
+        return event, None
+
+    @staticmethod
     def delete(event_id: int) -> bool:
         event = db.session.get(Event, event_id)
         if not event:

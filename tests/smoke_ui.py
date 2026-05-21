@@ -320,6 +320,41 @@ class TestEventsUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertIsNone(db.session.get(Event, eid))
 
+    def test_edit_event_page_loads(self):
+        event = Event(name="Editable Event", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        resp = self.client.get(f"/events/{event.id}/edit")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Editable Event", resp.data)
+
+    def test_edit_event_page_not_found_redirects(self):
+        resp = self.client.get("/events/9999/edit")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_update_event_redirects_on_success(self):
+        event = Event(name="Old Name", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        resp = self.client.post(f"/events/{event.id}/edit", data={
+            "name": "New Name",
+            "date": "2027-06-01T10:00",
+        })
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(event)
+        self.assertEqual(event.name, "New Name")
+
+    def test_update_event_missing_name_redirects_with_flash(self):
+        event = Event(name="Keep Name", date=datetime.now(timezone.utc), group_id=self.group.id)
+        db.session.add(event)
+        db.session.commit()
+        resp = self.client.post(f"/events/{event.id}/edit", data={
+            "name": "",
+            "date": "2027-06-01T10:00",
+        }, follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"required", resp.data)
+
 
 # ---------------------------------------------------------------------------
 # Attendance UI
