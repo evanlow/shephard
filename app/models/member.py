@@ -15,6 +15,9 @@ class Member(db.Model):
     name = db.Column(db.String(128), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    # NULL = active. Non-null = last day of membership (stored as 23:59:59 so
+    # events on that calendar day still include the member; events after do not).
+    deactivated_at = db.Column(db.DateTime, nullable=True)
 
     group = db.relationship("Group", foreign_keys=[group_id], back_populates="primary_members")
     groups = db.relationship("Group", secondary=member_groups, back_populates="members", order_by="Group.name")

@@ -173,6 +173,62 @@ class TestMembersUI(unittest.TestCase):
         joined_date = joined_at.date() if hasattr(joined_at, "date") else datetime.fromisoformat(str(joined_at)).date()
         self.assertEqual(joined_date, date(2020, 3, 15))
 
+    def test_deactivate_member_returns_redirect(self):
+        member = Member(name="Depart Soon")
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/deactivate",
+            data={"deactivated_at": "2026-06-30"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.expire_all()
+        updated = db.session.get(Member, member.id)
+        self.assertIsNotNone(updated.deactivated_at)
+
+    def test_deactivate_missing_date_redirects(self):
+        member = Member(name="No Date")
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/deactivate",
+            data={"deactivated_at": ""},
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.expire_all()
+        still_active = db.session.get(Member, member.id)
+        self.assertIsNone(still_active.deactivated_at)
+
+    def test_reactivate_member_returns_redirect(self):
+        from datetime import datetime as dt
+        member = Member(name="Come Back")
+        member.deactivated_at = dt(2026, 5, 31, 23, 59, 59)
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/reactivate",
+            data={"rejoined_at": "2026-09-01"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.expire_all()
+        updated = db.session.get(Member, member.id)
+        self.assertIsNone(updated.deactivated_at)
+
+    def test_reactivate_missing_date_redirects(self):
+        from datetime import datetime as dt
+        member = Member(name="Still Gone")
+        member.deactivated_at = dt(2026, 5, 31, 23, 59, 59)
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/reactivate",
+            data={"rejoined_at": ""},
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.expire_all()
+        still_inactive = db.session.get(Member, member.id)
+        self.assertIsNotNone(still_inactive.deactivated_at)
+
 
 # ---------------------------------------------------------------------------
 # Groups UI
@@ -609,6 +665,26 @@ class TestAttendanceUI(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_deactivated_member_excluded_from_future_event(self):
+        """A member deactivated before the event date is not listed on the attendance page."""
+        from datetime import datetime as dt
+        # self.event is 2099-12-31; deactivate Alice before that date
+        self.member.deactivated_at = dt(2026, 6, 30, 23, 59, 59)
+        db.session.commit()
+        resp = self.client.get(f"/events/{self.event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(b"Alice", resp.data)
+
+    def test_active_member_still_appears_on_event_after_deactivation_date(self):
+        """A member deactivated after the event date should still appear on that event."""
+        from datetime import datetime as dt
+        # self.event is 2099-12-31; deactivate Alice on the very day → still listed
+        self.member.deactivated_at = dt(2099, 12, 31, 23, 59, 59)
+        db.session.commit()
+        resp = self.client.get(f"/events/{self.event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Alice", resp.data)
 
 
 # ---------------------------------------------------------------------------

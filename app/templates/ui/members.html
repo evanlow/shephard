@@ -43,7 +43,11 @@
   <div class="card-header d-flex align-items-center gap-2">
     <input type="text" id="memberSearch" class="form-control form-control-sm w-auto flex-grow-1"
            placeholder="Search by name…" />
-    <span class="text-muted small">{{ members|length }} member{{ 's' if members|length != 1 else '' }}</span>
+    <div class="form-check form-switch mb-0 ms-2">
+      <input class="form-check-input" type="checkbox" id="showInactive" />
+      <label class="form-check-label small text-muted" for="showInactive">Show inactive</label>
+    </div>
+    <span class="text-muted small ms-2" id="memberCount"></span>
   </div>
   <div class="table-responsive">
     <table class="table table-hover mb-0" id="membersTable">
@@ -53,14 +57,17 @@
           <th>Name</th>
           <th>Group</th>
           <th>Added</th>
+          <th>Status</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for m in members %}
-        <tr>
+        {% set is_active = m.deactivated_at is none %}
+        <tr class="{{ '' if is_active else 'text-muted inactive-row' }}"
+            data-active="{{ 'true' if is_active else 'false' }}">
           <td class="text-muted small">{{ loop.index }}</td>
-          <td class="member-name fw-semibold">{{ m.name }}</td>
+          <td class="member-name fw-semibold {{ '' if is_active else 'text-decoration-line-through' }}">{{ m.name }}</td>
           <td>
             {% for g in m.groups %}
               <span class="badge {{ 'bg-warning text-dark' if g.name == default_group.name else 'bg-info text-dark' }}">{{ g.name }}</span>
@@ -70,8 +77,27 @@
           </td>
           <td class="text-muted small">{{ m.created_at.strftime('%d %b %Y') }}</td>
           <td>
+            {% if is_active %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+              <div class="text-muted small">from {{ m.deactivated_at.strftime('%d %b %Y') }}</div>
+            {% endif %}
+          </td>
+          <td>
             <a href="{{ url_for('ui.edit_member', member_id=m.id) }}"
                class="btn btn-sm btn-outline-primary me-1">Edit</a>
+
+            {% if is_active %}
+              <button class="btn btn-sm btn-outline-warning"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#deact-{{ m.id }}">Deactivate</button>
+            {% else %}
+              <button class="btn btn-sm btn-outline-success"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#react-{{ m.id }}">Reactivate</button>
+            {% endif %}
+
             {% if current_user.is_superuser %}
             <form method="post" action="{{ url_for('ui.delete_member', member_id=m.id) }}"
                   class="d-inline"
@@ -81,9 +107,45 @@
             {% endif %}
           </td>
         </tr>
+
+        {% if is_active %}
+        <tr class="collapse bg-warning bg-opacity-10 inactive-row" id="deact-{{ m.id }}"
+            data-active="true">
+          <td colspan="6" class="py-2 ps-3">
+            <form method="post" action="{{ url_for('ui.deactivate_member', member_id=m.id) }}"
+                  class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="fw-semibold small">Last active day for {{ m.name }}:</span>
+              <input type="date" name="deactivated_at" value="{{ today }}"
+                     class="form-control form-control-sm" style="width: 170px;" required />
+              <button type="submit" class="btn btn-warning btn-sm">Confirm</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#deact-{{ m.id }}">Cancel</button>
+            </form>
+          </td>
+        </tr>
+
+        {% else %}
+        <tr class="collapse bg-success bg-opacity-10" id="react-{{ m.id }}"
+            data-active="false">
+          <td colspan="6" class="py-2 ps-3">
+            <form method="post" action="{{ url_for('ui.reactivate_member', member_id=m.id) }}"
+                  class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="fw-semibold small">Rejoin date for {{ m.name }}:</span>
+              <input type="date" name="rejoined_at" value="{{ today }}"
+                     class="form-control form-control-sm" style="width: 170px;" required />
+              <button type="submit" class="btn btn-success btn-sm">Confirm</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#react-{{ m.id }}">Cancel</button>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
+
         {% else %}
         <tr>
-          <td colspan="5" class="text-center text-muted py-4">
+          <td colspan="6" class="text-center text-muted py-4">
             No members yet. Click <strong>+ Add Member</strong> to get started.
           </td>
         </tr>
@@ -96,12 +158,38 @@
 
 {% block scripts %}
 <script>
-  document.getElementById('memberSearch').addEventListener('input', function () {
-    const q = this.value.toLowerCase();
+  function updateMemberCount() {
+    const visible = [...document.querySelectorAll('#membersTable tbody tr.member-row')]
+      .filter(r => r.style.display !== 'none').length;
+    document.getElementById('memberCount').textContent =
+      visible + ' member' + (visible !== 1 ? 's' : '');
+  }
+
+  function applyFilters() {
+    const q = document.getElementById('memberSearch').value.toLowerCase();
+    const showInactive = document.getElementById('showInactive').checked;
     document.querySelectorAll('#membersTable tbody tr').forEach(row => {
+      if (!row.classList.contains('member-row')) return; // skip collapse rows
       const name = (row.querySelector('.member-name') || {}).textContent || '';
-      row.style.display = name.toLowerCase().includes(q) ? '' : 'none';
+      const isActive = row.dataset.active === 'true';
+      const nameMatch = name.toLowerCase().includes(q);
+      const activeMatch = isActive || showInactive;
+      row.style.display = (nameMatch && activeMatch) ? '' : 'none';
     });
+    updateMemberCount();
+  }
+
+  // Mark data rows vs collapse rows
+  document.querySelectorAll('#membersTable tbody tr').forEach(row => {
+    if (!row.id || (!row.id.startsWith('deact-') && !row.id.startsWith('react-'))) {
+      row.classList.add('member-row');
+    }
   });
+
+  document.getElementById('memberSearch').addEventListener('input', applyFilters);
+  document.getElementById('showInactive').addEventListener('change', applyFilters);
+
+  // Run once on page load to hide inactive by default and set count
+  applyFilters();
 </script>
 {% endblock %}

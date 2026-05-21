@@ -8,7 +8,7 @@
   <a href="{{ url_for('ui.members') }}" class="text-decoration-none">&larr; Back to Members</a>
 </div>
 
-<div class="card" style="max-width: 480px;">
+<div class="card mb-3" style="max-width: 480px;">
   <div class="card-header">
     <h5 class="mb-0">Edit Member</h5>
   </div>
@@ -40,6 +40,53 @@
         <a href="{{ url_for('ui.members') }}" class="btn btn-outline-secondary">Cancel</a>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Membership status management -->
+<div class="card" style="max-width: 480px;">
+  <div class="card-header">
+    <h6 class="mb-0">Membership Status</h6>
+  </div>
+  <div class="card-body">
+    {% if member.deactivated_at is none %}
+    <p class="mb-3">
+      <span class="badge bg-success me-1">Active</span>
+      This member appears in current and future attendance.
+    </p>
+    <form method="post" action="{{ url_for('ui.deactivate_member', member_id=member.id) }}">
+      <div class="row g-2 align-items-end">
+        <div class="col">
+          <label class="form-label small">Last active day</label>
+          <input type="date" name="deactivated_at" class="form-control form-control-sm"
+                 value="{{ today }}" required />
+          <div class="form-text">Events on and before this date will still list them. Events after will not.</div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning btn-sm">Deactivate</button>
+        </div>
+      </div>
+    </form>
+    {% else %}
+    <p class="mb-3">
+      <span class="badge bg-secondary me-1">Inactive</span>
+      Deactivated from <strong>{{ member.deactivated_at.strftime('%d %b %Y') }}</strong>.
+      This member does not appear in attendance from that date onward.
+    </p>
+    <form method="post" action="{{ url_for('ui.reactivate_member', member_id=member.id) }}">
+      <div class="row g-2 align-items-end">
+        <div class="col">
+          <label class="form-label small">Rejoin date</label>
+          <input type="date" name="rejoined_at" class="form-control form-control-sm"
+                 value="{{ today }}" required />
+          <div class="form-text">Member will appear in attendance from this date onward. The gap period remains excluded.</div>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-success btn-sm">Reactivate</button>
+        </div>
+      </div>
+    </form>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from ..extensions import db
 from ..models.group import Group
 from ..models.member import Member
+from ..models.membership import member_groups
 from .group_service import GroupService
 
 
@@ -99,3 +102,41 @@ class MemberService:
         db.session.delete(member)
         db.session.commit()
         return True
+
+    @staticmethod
+    def deactivate(member_id: int, deactivated_at: datetime) -> tuple[Member | None, str | None]:
+        """Mark a member as inactive from deactivated_at (their last active day).
+
+        deactivated_at should be stored as end-of-day (23:59:59) so that events
+        on the same calendar day still include the member; events on later dates do not.
+        """
+        member = db.session.get(Member, member_id)
+        if not member:
+            return None, "Member not found"
+        if member.deactivated_at is not None:
+            return None, "Member is already inactive"
+        member.deactivated_at = deactivated_at
+        db.session.commit()
+        return member, None
+
+    @staticmethod
+    def reactivate(member_id: int, rejoined_at: datetime) -> tuple[Member | None, str | None]:
+        """Reactivate an inactive member.
+
+        Clears deactivated_at and updates joined_at for all group memberships to
+        rejoined_at, so the member appears in events from that date onward but is
+        correctly excluded from the gap period between their departure and return.
+        """
+        member = db.session.get(Member, member_id)
+        if not member:
+            return None, "Member not found"
+        if member.deactivated_at is None:
+            return None, "Member is already active"
+        member.deactivated_at = None
+        db.session.execute(
+            member_groups.update()
+            .where(member_groups.c.member_id == member_id)
+            .values(joined_at=rejoined_at)
+        )
+        db.session.commit()
+        return member, None

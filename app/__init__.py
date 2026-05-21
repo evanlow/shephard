@@ -82,6 +82,16 @@ def _ensure_sqlite_schema_compatibility() -> None:
                     text("UPDATE member_groups SET joined_at = '1970-01-01 00:00:00'")
                 )
 
+        if "members" in tables:
+            member_columns = {
+                row[1] for row in conn.execute(text("PRAGMA table_info(members)"))
+            }
+            if "deactivated_at" not in member_columns:
+                # Add nullable column — all existing members are active (NULL = active).
+                conn.execute(
+                    text("ALTER TABLE members ADD COLUMN deactivated_at DATETIME")
+                )
+
 
 def _ensure_default_group_membership() -> None:
     default_group = GroupService.get_default_group()

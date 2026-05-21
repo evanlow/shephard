@@ -52,6 +52,7 @@ class AttendanceService:
         expected_member_ids = {m.id for m in expected_members}
 
         # Only include members who were assigned to this group on or before the event date
+        # and were not yet deactivated by that date.
         eligible_ids = set(
             db.session.execute(
                 db.select(member_groups.c.member_id).where(
@@ -60,7 +61,11 @@ class AttendanceService:
                 )
             ).scalars().all()
         )
-        expected_members = [m for m in expected_members if m.id in eligible_ids]
+        expected_members = [
+            m for m in expected_members
+            if m.id in eligible_ids
+            and (m.deactivated_at is None or m.deactivated_at > event.date)
+        ]
         expected_member_ids = {m.id for m in expected_members}
 
         present_member_ids = set(

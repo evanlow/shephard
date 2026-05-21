@@ -164,6 +164,65 @@ class TestMemberService(unittest.TestCase):
         self.assertIsNotNone(default)
         self.assertEqual(default.name, "ALL MEMBERS")
 
+    # ------------------------------------------------------------------
+    # Deactivate / reactivate
+    # ------------------------------------------------------------------
+
+    def test_deactivate_sets_deactivated_at(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="Leaver")
+        cutoff = datetime(2026, 5, 31, 23, 59, 59)
+        updated, error = MemberService.deactivate(member.id, cutoff)
+        self.assertIsNone(error)
+        self.assertIsNotNone(updated.deactivated_at)
+
+    def test_deactivate_already_inactive_returns_error(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="Gone")
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
+        _, error = MemberService.deactivate(member.id, datetime(2026, 6, 30, 23, 59, 59))
+        self.assertIsNotNone(error)
+
+    def test_deactivate_unknown_member_returns_error(self):
+        from datetime import datetime
+        _, error = MemberService.deactivate(9999, datetime(2026, 5, 31, 23, 59, 59))
+        self.assertIsNotNone(error)
+
+    def test_reactivate_clears_deactivated_at(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="Returning")
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
+        updated, error = MemberService.reactivate(member.id, datetime(2026, 9, 1))
+        self.assertIsNone(error)
+        db.session.expire(updated)
+        refreshed = MemberService.get_by_id(member.id)
+        self.assertIsNone(refreshed.deactivated_at)
+
+    def test_reactivate_updates_joined_at_to_rejoin_date(self):
+        from datetime import datetime
+        from app.extensions import db as _db
+        from app.models.membership import member_groups as mg
+        member, _ = MemberService.create(name="Coming Back")
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
+        rejoin = datetime(2026, 9, 1)
+        MemberService.reactivate(member.id, rejoin)
+        rows = _db.session.execute(
+            _db.select(mg.c.joined_at).where(mg.c.member_id == member.id)
+        ).scalars().all()
+        for joined_at in rows:
+            self.assertEqual(str(joined_at)[:10], "2026-09-01")
+
+    def test_reactivate_already_active_returns_error(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="Active Guy")
+        _, error = MemberService.reactivate(member.id, datetime(2026, 9, 1))
+        self.assertIsNotNone(error)
+
+    def test_reactivate_unknown_member_returns_error(self):
+        from datetime import datetime
+        _, error = MemberService.reactivate(9999, datetime(2026, 9, 1))
+        self.assertIsNotNone(error)
+
 
 if __name__ == "__main__":
     unittest.main()

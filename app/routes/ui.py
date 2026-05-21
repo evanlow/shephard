@@ -40,11 +40,13 @@ def members():
     all_members = MemberService.get_all()
     default_group = GroupService.get_default_group()
     all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
+    today = datetime.now().strftime("%Y-%m-%d")
     return render_template(
         "ui/members.html",
         members=all_members,
         groups=all_groups,
         default_group=default_group,
+        today=today,
     )
 
 
@@ -81,7 +83,8 @@ def edit_member(member_id: int):
         return redirect(url_for("ui.members"))
     default_group = GroupService.get_default_group()
     all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
-    return render_template("ui/member_edit.html", member=member, groups=all_groups, default_group=default_group)
+    today = datetime.now().strftime("%Y-%m-%d")
+    return render_template("ui/member_edit.html", member=member, groups=all_groups, default_group=default_group, today=today)
 
 
 @bp.post("/members/<int:member_id>/edit")
@@ -141,6 +144,53 @@ def delete_member(member_id: int):
     name = member.name
     MemberService.delete(member_id)
     flash(f"Member '{name}' deleted.", "success")
+    return redirect(url_for("ui.members"))
+
+
+@bp.post("/members/<int:member_id>/deactivate")
+@admin_required
+def deactivate_member(member_id: int):
+    """Mark a member as inactive from a given date (their last active day)."""
+    date_str = request.form.get("deactivated_at", "").strip()
+    if not date_str:
+        flash("Deactivation date is required.", "error")
+        return redirect(url_for("ui.members"))
+    try:
+        # Store as end-of-day so events on that calendar day still include the member.
+        deactivated_at = datetime.strptime(date_str, "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59
+        )
+    except ValueError:
+        flash("Invalid date format.", "error")
+        return redirect(url_for("ui.members"))
+
+    member, error = MemberService.deactivate(member_id, deactivated_at)
+    if error:
+        flash(error, "error")
+    else:
+        flash(f"'{member.name}' deactivated from {date_str}.", "success")
+    return redirect(url_for("ui.members"))
+
+
+@bp.post("/members/<int:member_id>/reactivate")
+@admin_required
+def reactivate_member(member_id: int):
+    """Reactivate an inactive member from a given rejoin date."""
+    date_str = request.form.get("rejoined_at", "").strip()
+    if not date_str:
+        flash("Rejoin date is required.", "error")
+        return redirect(url_for("ui.members"))
+    try:
+        rejoined_at = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        flash("Invalid date format.", "error")
+        return redirect(url_for("ui.members"))
+
+    member, error = MemberService.reactivate(member_id, rejoined_at)
+    if error:
+        flash(error, "error")
+    else:
+        flash(f"'{member.name}' reactivated from {date_str}.", "success")
     return redirect(url_for("ui.members"))
 
 
@@ -374,6 +424,7 @@ def attendance(event_id: int):
         .join(member_groups, (member_groups.c.member_id == Member.id) & (member_groups.c.group_id == event.group_id))
         .where(Group.id == event.group_id)
         .where(member_groups.c.joined_at <= event.date)
+        .where(db.or_(Member.deactivated_at == None, Member.deactivated_at > event.date))
         .order_by(Member.name)
     ).scalars().all()
 
