@@ -165,6 +165,29 @@ class TestAttendanceService(unittest.TestCase):
         self.assertEqual(status["present_count"], 1)
         self.assertEqual(status["absent_count"], 1)
 
+    def test_get_event_status_excludes_member_who_joined_after_event(self):
+        """A member added to the group after the event date must not appear in the report."""
+        past_event = Event(name="Past Event", date=datetime(2020, 1, 1, 10, 0), group_id=self.group_id)
+        db.session.add(past_event)
+        db.session.commit()
+
+        # Member created now (2026) — joined_at is after the 2020 event date
+        late_member = Member(name="Late Joiner", group_id=self.group_id)
+        db.session.add(late_member)
+        db.session.commit()
+
+        status, error = AttendanceService.get_event_status(past_event.id)
+        self.assertIsNone(error)
+        member_ids = [m["id"] for m in status["expected_members"]]
+        self.assertNotIn(late_member.id, member_ids)
+
+    def test_get_event_status_includes_member_who_joined_before_event(self):
+        """A member added before the event date must appear in the report."""
+        status, error = AttendanceService.get_event_status(self.event_id)
+        self.assertIsNone(error)
+        member_ids = [m["id"] for m in status["expected_members"]]
+        self.assertIn(self.member_id, member_ids)
+
     def test_record_blocked_for_archived_event(self):
         EventService.archive(self.event_id)
         record, error = AttendanceService.record(

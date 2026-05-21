@@ -10,4 +10,5 @@ member_groups = db.Table(
     "member_groups",
     db.Column("member_id", db.Integer, db.ForeignKey("members.id", ondelete="CASCADE"), primary_key=True),
     db.Column("group_id", db.Integer, db.ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("joined_at", db.DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
 )

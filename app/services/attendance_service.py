@@ -6,6 +6,7 @@ from ..extensions import db
 from ..models.attendance import Attendance
 from ..models.event import Event
 from ..models.member import Member
+from ..models.membership import member_groups
 
 
 class AttendanceService:
@@ -48,6 +49,18 @@ class AttendanceService:
 
         expected_members = list(event.group.members)
         expected_members.sort(key=lambda member: member.name)
+        expected_member_ids = {m.id for m in expected_members}
+
+        # Only include members who were assigned to this group on or before the event date
+        eligible_ids = set(
+            db.session.execute(
+                db.select(member_groups.c.member_id).where(
+                    member_groups.c.group_id == event.group_id,
+                    member_groups.c.joined_at <= event.date,
+                )
+            ).scalars().all()
+        )
+        expected_members = [m for m in expected_members if m.id in eligible_ids]
         expected_member_ids = {m.id for m in expected_members}
 
         present_member_ids = set(
