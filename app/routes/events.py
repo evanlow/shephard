@@ -67,7 +67,12 @@ def get_event(event_id: int):
 @bp.put("/<int:event_id>")
 def update_event(event_id: int):
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip() or None
+    name = None
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "name cannot be blank"}), 400
+
     date_str = data.get("date")
     date = None
 
@@ -81,7 +86,7 @@ def update_event(event_id: int):
         return jsonify({"error": "provide name and/or date"}), 400
 
     event, error = EventService.update(event_id, name=name, date=date)
-    if error == "Event not found":
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
         return jsonify({"error": error}), 404
     if error:
         return jsonify({"error": error}), 400

@@ -200,6 +200,18 @@ class TestEventsCRUD(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_update_event_blank_name_returns_400(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"name": "   ", "date": "2027-01-01T09:00:00"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(json.loads(resp.data)["error"], "name cannot be blank")
+
     def test_update_event_no_fields_returns_400(self):
         create_resp = self._create_event()
         event_id = json.loads(create_resp.data)["id"]

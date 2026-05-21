@@ -135,6 +135,12 @@ class TestEventService(unittest.TestCase):
         self.assertIsNotNone(error)
         self.assertIn("not found", error.lower())
 
+    def test_update_no_fields_returns_error(self):
+        event, _ = EventService.create(name="Noop", date=FUTURE_DATE, group_id=self.group_id)
+        result, error = EventService.update(event.id)
+        self.assertIsNone(result)
+        self.assertEqual(error, EventService.ERROR_NO_FIELDS_TO_UPDATE)
+
 
 if __name__ == "__main__":
     unittest.main()

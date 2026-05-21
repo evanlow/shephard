@@ -271,8 +271,7 @@ def edit_event(event_id: int):
     if not event:
         flash("Event not found.", "error")
         return redirect(url_for("ui.events"))
-    all_groups = GroupService.get_all()
-    return render_template("ui/event_edit.html", event=event, groups=all_groups)
+    return render_template("ui/event_edit.html", event=event)
 
 
 @bp.post("/events/<int:event_id>/edit")
@@ -297,7 +296,7 @@ def update_event(event_id: int):
         return redirect(url_for("ui.edit_event", event_id=event_id))
 
     event, error = EventService.update(event_id, name=name, date=date)
-    if error == "Event not found":
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
         flash("Event not found.", "error")
         return redirect(url_for("ui.events"))
     if error:

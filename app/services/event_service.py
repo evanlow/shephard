@@ -8,6 +8,9 @@ from ..models.group import Group
 
 
 class EventService:
+    ERROR_EVENT_NOT_FOUND = "Event not found"
+    ERROR_NO_FIELDS_TO_UPDATE = "provide name and/or date"
+
     @staticmethod
     def get_all(group_id: int | None = None) -> list[Event]:
         stmt = db.select(Event).order_by(Event.date.desc())
@@ -31,9 +34,12 @@ class EventService:
 
     @staticmethod
     def update(event_id: int, name: str | None = None, date: datetime | None = None) -> tuple[Event | None, str | None]:
+        if name is None and date is None:
+            return None, EventService.ERROR_NO_FIELDS_TO_UPDATE
+
         event = db.session.get(Event, event_id)
         if not event:
-            return None, "Event not found"
+            return None, EventService.ERROR_EVENT_NOT_FOUND
         if name is not None:
             event.name = name
         if date is not None:
