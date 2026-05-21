@@ -432,7 +432,7 @@ class TestAttendanceUI(unittest.TestCase):
         db.session.commit()
         self.event = Event(
             name="Sunday Service",
-            date=datetime.now(timezone.utc),
+            date=datetime(2099, 12, 31, 10, 0),
             group_id=self.group.id,
         )
         db.session.add(self.event)

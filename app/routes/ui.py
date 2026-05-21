@@ -20,6 +20,7 @@ from ..extensions import db
 from ..models.attendance import Attendance
 from ..models.group import Group
 from ..models.member import Member
+from ..models.membership import member_groups
 from ..routes.auth import admin_required, superuser_required
 from ..services.attendance_service import AttendanceService
 from ..services.event_service import EventService
@@ -350,7 +351,9 @@ def attendance(event_id: int):
     expected_members = db.session.execute(
         db.select(Member)
         .join(Member.groups)
+        .join(member_groups, (member_groups.c.member_id == Member.id) & (member_groups.c.group_id == event.group_id))
         .where(Group.id == event.group_id)
+        .where(member_groups.c.joined_at <= event.date)
         .order_by(Member.name)
     ).scalars().all()
 
