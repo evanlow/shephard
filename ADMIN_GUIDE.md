@@ -11,10 +11,12 @@
 3. [User Roles](#3-user-roles)
 4. [Creating the First Superuser](#4-creating-the-first-superuser)
 5. [Managing Admin Users](#5-managing-admin-users)
-6. [The Database](#6-the-database)
-7. [Environment Variables](#7-environment-variables)
-8. [Switching to PostgreSQL](#8-switching-to-postgresql)
-9. [URL Reference](#9-url-reference)
+6. [Managing Groups and Members](#6-managing-groups-and-members)
+7. [Managing Events](#7-managing-events)
+8. [The Database](#8-the-database)
+9. [Environment Variables](#9-environment-variables)
+10. [Switching to PostgreSQL](#10-switching-to-postgresql)
+11. [URL Reference](#11-url-reference)
 
 ---
 
@@ -131,7 +133,53 @@ Click **Delete** next to the user. You cannot delete your own account.
 
 ---
 
-## 6. The Database
+## 6. Managing Groups and Members
+
+### The ALL MEMBERS group
+
+Every Shepherd installation has a built-in **ALL MEMBERS** group that is created automatically on first use. This group has special behaviour:
+
+- Every new member is automatically enrolled in ALL MEMBERS at creation time.
+- Members assigned to additional groups belong to those groups **and** ALL MEMBERS simultaneously.
+- The ALL MEMBERS group **cannot be renamed or deleted** — attempts via the UI or API will be rejected.
+
+### Multi-group membership
+
+A member can belong to more than one group at a time (e.g. "Worship Service" and "Youth Group"). When creating or updating a member via the API you can supply multiple group IDs:
+
+```json
+POST /api/members/
+{ "name": "Jane Doe", "group_ids": [2, 5] }
+```
+
+The response will include both a `group_ids` list and a `groups` list (name + id) reflecting all current memberships. ALL MEMBERS is always included automatically — you do not need to pass its ID.
+
+---
+
+## 7. Managing Events
+
+### Editing an event
+
+Admins can edit an event's **name** and **date/time** after creation. The group an event belongs to cannot be changed.
+
+**Via the UI:**
+1. Go to the **Events** page.
+2. Click the edit icon next to the event.
+3. Update the name and/or date & time, then click **Save Changes**.
+
+**Via the API:**
+```
+PUT /api/events/<id>
+Content-Type: application/json
+
+{ "name": "Sunday Service – May 25", "date": "2026-05-25T10:00:00" }
+```
+
+You can supply `name`, `date`, or both. At least one field is required. An invalid or blank `name`, or an unparseable `date`, returns `400`.
+
+---
+
+## 8. The Database
 
 ### Development (SQLite)
 
@@ -169,12 +217,13 @@ SELECT * FROM users;
 | `users` | Admin accounts |
 | `members` | Church members |
 | `groups` | Ministry groups (e.g. Worship Service) |
+| `memberships` | Junction table linking members to groups (many-to-many) |
 | `events` | Scheduled services / gatherings |
 | `attendance` | Attendance records per event per member |
 
 ---
 
-## 7. Environment Variables
+## 9. Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
@@ -186,7 +235,7 @@ Configure these in your `.env` file (copied from `.env.example`).
 
 ---
 
-## 8. Switching to PostgreSQL
+## 10. Switching to PostgreSQL
 
 1. Set `DATABASE_URL` in `.env`:
    ```
@@ -212,7 +261,7 @@ Configure these in your `.env` file (copied from `.env.example`).
 
 ---
 
-## 9. URL Reference
+## 11. URL Reference
 
 ### Web UI
 
@@ -226,6 +275,8 @@ Configure these in your `.env` file (copied from `.env.example`).
 | `GET /admin/users/new` | Superuser | Create user form |
 | `POST /admin/users/new` | Superuser | Submit new user |
 | `POST /admin/users/<id>/delete` | Superuser | Delete a user |
+| `GET /events/<id>/edit` | Admin | Edit event form |
+| `POST /events/<id>/edit` | Admin | Submit event edit form |
 
 ### REST API
 
@@ -233,12 +284,12 @@ All API endpoints require authentication. Unauthenticated requests return `401 {
 
 | Endpoint | Methods | Description |
 |---|---|---|
-| `/api/members/` | GET, POST | List / create members (supports `group_id`) |
-| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member (supports `group_id` assignment) |
+| `/api/members/` | GET, POST | List / create members (supports `group_id` or `group_ids`) |
+| `/api/members/<id>` | GET, PUT, DELETE | Get / update / delete a member (supports `group_ids` for multi-group assignment) |
 | `/api/groups/` | GET, POST | List / create groups |
-| `/api/groups/<id>` | GET, PUT, DELETE | Get / update / delete a group |
+| `/api/groups/<id>` | GET, PUT, DELETE | Get / update / delete a group (ALL MEMBERS group is protected) |
 | `/api/events/` | GET, POST | List / create events |
-| `/api/events/<id>` | GET, DELETE | Get / delete an event |
+| `/api/events/<id>` | GET, PUT, DELETE | Get / update / delete an event |
 | `/api/attendance/` | GET, POST | List / record attendance |
 | `/api/attendance/<id>` | PUT, DELETE | Update / delete an attendance record |
 | `/api/attendance/event/<id>/status` | GET | Attendance summary (expected/present/absent by event group) |
