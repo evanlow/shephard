@@ -1,6 +1,11 @@
+import io
+from datetime import datetime, timezone
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+import openpyxl
+from openpyxl.styles import Font
+
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import text
 
@@ -11,6 +16,7 @@ from ..models.group import Group
 from ..models.member import Member
 from ..models.membership import DEFAULT_GROUP_NAME, member_groups
 from ..models.user import User
+from ..services.attendance_service import AttendanceService
 
 bp = Blueprint("auth", __name__)
 
@@ -275,3 +281,107 @@ def purge_groups():
     n = len(non_default_ids)
     flash(f"All custom groups deleted ({n} group{'s' if n != 1 else ''} removed; ALL MEMBERS preserved).", "success")
     return redirect(url_for("auth.purge_page"))
+
+
+# ---------------------------------------------------------------------------
+# Full-system Excel export (superuser only)
+# ---------------------------------------------------------------------------
+
+@bp.get("/admin/export")
+@superuser_required
+def export_all():
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: Members ─────────────────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Members"
+
+    header = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"]
+    ws.append(header)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    members = db.session.execute(db.select(Member).order_by(Member.name)).scalars().all()
+    for i, m in enumerate(members, 1):
+        primary = m.group.name if m.group else "—"
+        all_groups = ", ".join(g.name for g in m.groups)
+        status = "Inactive" if m.deactivated_at else "Active"
+        since = m.created_at.strftime("%d %b %Y") if m.created_at else "—"
+        deactivated = m.deactivated_at.strftime("%d %b %Y") if m.deactivated_at else ""
+        ws.append([i, m.name, primary, all_groups, status, since, deactivated])
+
+    # Set column widths
+    for col, width in zip("ABCDEFG", [5, 30, 20, 40, 12, 15, 15]):
+        ws.column_dimensions[col].width = width
+
+    # ── One sheet per event (oldest first) ───────────────────────────────────
+    events = db.session.execute(
+        db.select(Event).order_by(Event.date.asc(), Event.name)
+    ).scalars().all()
+
+    used_names = {"Members"}
+    for event in events:
+        # Build a unique sheet name within Excel's 31-char limit
+        raw = f"{event.date.strftime('%d%b%y')} {event.name}"
+        sheet_name = raw[:31]
+        if sheet_name in used_names:
+            base = raw[:28]
+            n = 2
+            while f"{base}({n})" in used_names:
+                n += 1
+            sheet_name = f"{base}({n})"
+        used_names.add(sheet_name)
+
+        ws_ev = wb.create_sheet(title=sheet_name)
+
+        # Event metadata header block
+        meta = [
+            ("Event:", event.name),
+            ("Date:", event.date.strftime("%d %b %Y")),
+            ("Group:", event.group.name if event.group else "—"),
+            ("Archived:", "Yes" if event.is_archived else "No"),
+        ]
+        for label, value in meta:
+            ws_ev.append([label, value])
+            ws_ev.cell(row=ws_ev.max_row, column=1).font = Font(bold=True)
+        ws_ev.append([])  # blank separator
+
+        # Attendance table header
+        att_header_row = ws_ev.max_row + 1
+        ws_ev.append(["#", "Name", "Present"])
+        for cell in ws_ev[att_header_row]:
+            cell.font = Font(bold=True)
+
+        # Attendance data
+        status_data, _ = AttendanceService.get_event_status(event.id)
+        if status_data and status_data["expected_members"]:
+            present_ids = {m["id"] for m in status_data["present_members"]}
+            for j, m_data in enumerate(status_data["expected_members"], 1):
+                present = "Yes" if m_data["id"] in present_ids else "No"
+                ws_ev.append([j, m_data["name"], present])
+            ws_ev.append([])
+            ws_ev.append(["", "Present:", status_data["present_count"]])
+            ws_ev.append(["", "Absent:", status_data["absent_count"]])
+            ws_ev.append(["", "Total:", status_data["expected_count"]])
+            for row in ws_ev.iter_rows(min_row=ws_ev.max_row - 2, max_row=ws_ev.max_row, min_col=2, max_col=2):
+                for cell in row:
+                    cell.font = Font(bold=True)
+        else:
+            ws_ev.append(["", "(No eligible members for this event)", ""])
+
+        ws_ev.column_dimensions["A"].width = 5
+        ws_ev.column_dimensions["B"].width = 30
+        ws_ev.column_dimensions["C"].width = 10
+
+    # ── Stream to response ───────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"shepherd_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )

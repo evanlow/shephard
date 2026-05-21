@@ -404,5 +404,117 @@ class TestSystemPurge(unittest.TestCase):
         self.assertEqual(db.session.query(Attendance).count(), 0)
 
 
+# ---------------------------------------------------------------------------
+# Full-system Excel export
+# ---------------------------------------------------------------------------
+
+class TestExport(unittest.TestCase):
+    def setUp(self):
+        self.app = _make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        self.superuser = _create_user("su", "su@test.com", "password123", is_superuser=True)
+        self.plain_user = _create_user("plain", "plain@test.com", "password123", is_superuser=False)
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def _login_as_superuser(self):
+        self.client.post("/login", data={"username": "su", "password": "password123"})
+
+    def _login_as_plain(self):
+        self.client.post("/login", data={"username": "plain", "password": "password123"})
+
+    def _seed(self):
+        from app.models.group import Group
+        from app.models.member import Member
+        from app.models.event import Event
+        from app.models.attendance import Attendance
+        from app.services.group_service import GroupService
+        from datetime import datetime
+        GroupService.get_default_group()
+        group = Group(name="Choir")
+        db.session.add(group)
+        db.session.commit()
+        member = Member(name="Alice")
+        db.session.add(member)
+        db.session.commit()
+        event = Event(name="Sunday Service", date=datetime(2026, 5, 4, 10, 0), group_id=group.id)
+        db.session.add(event)
+        db.session.commit()
+        att = Attendance(event_id=event.id, member_id=member.id, present=True)
+        db.session.add(att)
+        db.session.commit()
+        return group, member, event, att
+
+    def test_export_requires_auth(self):
+        resp = self.client.get("/admin/export")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_export_requires_superuser(self):
+        self._login_as_plain()
+        resp = self.client.get("/admin/export")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_export_returns_xlsx_for_superuser(self):
+        self._login_as_superuser()
+        resp = self.client.get("/admin/export")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            resp.content_type,
+        )
+
+    def test_export_is_attachment_with_filename(self):
+        self._login_as_superuser()
+        resp = self.client.get("/admin/export")
+        disposition = resp.headers.get("Content-Disposition", "")
+        self.assertIn("attachment", disposition)
+        self.assertIn("shepherd_export_", disposition)
+        self.assertIn(".xlsx", disposition)
+
+    def test_export_first_sheet_is_members(self):
+        import io
+        import openpyxl
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.get("/admin/export")
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        self.assertEqual(wb.sheetnames[0], "Members")
+
+    def test_export_members_sheet_contains_member_data(self):
+        import io
+        import openpyxl
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.get("/admin/export")
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        ws = wb["Members"]
+        names = [ws.cell(row=r, column=2).value for r in range(2, ws.max_row + 1)]
+        self.assertIn("Alice", names)
+
+    def test_export_has_event_sheet(self):
+        import io
+        import openpyxl
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.get("/admin/export")
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        # There should be more than just the Members sheet
+        self.assertGreater(len(wb.sheetnames), 1)
+
+    def test_export_empty_db_returns_only_members_sheet(self):
+        import io
+        import openpyxl
+        self._login_as_superuser()
+        resp = self.client.get("/admin/export")
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        self.assertEqual(wb.sheetnames, ["Members"])
+
+
 if __name__ == "__main__":
     unittest.main()
