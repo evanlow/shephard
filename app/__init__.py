@@ -69,15 +69,15 @@ def _ensure_sqlite_schema_compatibility() -> None:
                 row[1] for row in conn.execute(text("PRAGMA table_info(member_groups)"))
             }
             if "joined_at" not in mg_columns:
+                # SQLite ALTER TABLE ADD COLUMN only accepts constant literal defaults;
+                # CURRENT_TIMESTAMP is not a constant so we add the column as nullable
+                # and backfill. New rows get datetime.utcnow() via the Python-side
+                # column default in membership.py.
                 conn.execute(
-                    text(
-                        "ALTER TABLE member_groups "
-                        "ADD COLUMN joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
-                    )
+                    text("ALTER TABLE member_groups ADD COLUMN joined_at DATETIME")
                 )
                 # Backfill existing rows with the epoch so they predate all events
                 # and are never incorrectly excluded from historical reports.
-                # New rows created after this migration will get CURRENT_TIMESTAMP.
                 conn.execute(
                     text("UPDATE member_groups SET joined_at = '1970-01-01 00:00:00'")
                 )
