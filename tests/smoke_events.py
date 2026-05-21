@@ -153,6 +153,9 @@ class TestEventsCRUD(unittest.TestCase):
         create_resp = self._create_event()
         event_id = json.loads(create_resp.data)["id"]
 
+        # Must archive first before deleting
+        self.client.post(f"/api/events/{event_id}/archive")
+
         resp = self.client.delete(f"/api/events/{event_id}")
         self.assertEqual(resp.status_code, 204)
 
@@ -230,6 +233,96 @@ class TestEventsCRUD(unittest.TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 404)
+
+    def test_create_event_includes_is_archived_false(self):
+        resp = self._create_event()
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        self.assertIn("is_archived", data)
+        self.assertFalse(data["is_archived"])
+
+    def test_archive_event_returns_200_with_is_archived_true(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.post(f"/api/events/{event_id}/archive")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertTrue(data["is_archived"])
+
+    def test_archive_event_not_found_returns_404(self):
+        resp = self.client.post("/api/events/9999/archive")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_unarchive_event_returns_200_with_is_archived_false(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{event_id}/archive")
+
+        resp = self.client.post(f"/api/events/{event_id}/unarchive")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertFalse(data["is_archived"])
+
+    def test_unarchive_event_not_found_returns_404(self):
+        resp = self.client.post("/api/events/9999/unarchive")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_update_archived_event_returns_409(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{event_id}/archive")
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"name": "Changed"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 409)
+
+    def test_delete_non_archived_event_returns_409(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.delete(f"/api/events/{event_id}")
+        self.assertEqual(resp.status_code, 409)
+
+    def test_list_events_default_excludes_archived(self):
+        create_resp = self._create_event("Active Event")
+        event_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{event_id}/archive")
+        self._create_event("Another Active Event")
+
+        resp = self.client.get("/api/events/")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        names = [e["name"] for e in data]
+        self.assertNotIn("Active Event", names)
+        self.assertIn("Another Active Event", names)
+
+    def test_list_events_archived_true_returns_only_archived(self):
+        create_resp = self._create_event("Will Archive")
+        event_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{event_id}/archive")
+        self._create_event("Still Active")
+
+        resp = self.client.get("/api/events/?archived=true")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        names = [e["name"] for e in data]
+        self.assertIn("Will Archive", names)
+        self.assertNotIn("Still Active", names)
+
+    def test_unarchive_restores_event_to_default_list(self):
+        create_resp = self._create_event("Temporary Archive")
+        event_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{event_id}/archive")
+        self.client.post(f"/api/events/{event_id}/unarchive")
+
+        resp = self.client.get("/api/events/")
+        data = json.loads(resp.data)
+        names = [e["name"] for e in data]
+        self.assertIn("Temporary Archive", names)
 
 
 if __name__ == "__main__":

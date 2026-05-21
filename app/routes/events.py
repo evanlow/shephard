@@ -14,20 +14,29 @@ def protect():
     pass
 
 
+def _event_dict(e):
+    return {
+        "id": e.id,
+        "name": e.name,
+        "date": e.date.isoformat(),
+        "group_id": e.group_id,
+        "created_at": e.created_at.isoformat(),
+        "is_archived": e.is_archived,
+    }
+
+
 @bp.get("/")
 def list_events():
     group_id = request.args.get("group_id", type=int)
-    events = EventService.get_all(group_id=group_id)
-    return jsonify([
-        {
-            "id": e.id,
-            "name": e.name,
-            "date": e.date.isoformat(),
-            "group_id": e.group_id,
-            "created_at": e.created_at.isoformat(),
-        }
-        for e in events
-    ])
+    archived_param = request.args.get("archived")
+    if archived_param == "true":
+        archived = True
+    elif archived_param == "false":
+        archived = False
+    else:
+        archived = None
+    events = EventService.get_all(group_id=group_id, archived=archived)
+    return jsonify([_event_dict(e) for e in events])
 
 
 @bp.post("/")
@@ -53,7 +62,7 @@ def create_event():
     if error:
         return jsonify({"error": error}), 400
 
-    return jsonify({"id": event.id, "name": event.name, "date": event.date.isoformat(), "group_id": event.group_id}), 201
+    return jsonify(_event_dict(event)), 201
 
 
 @bp.get("/<int:event_id>")
@@ -61,7 +70,7 @@ def get_event(event_id: int):
     event = EventService.get_by_id(event_id)
     if not event:
         return jsonify({"error": "Event not found"}), 404
-    return jsonify({"id": event.id, "name": event.name, "date": event.date.isoformat(), "group_id": event.group_id})
+    return jsonify(_event_dict(event))
 
 
 @bp.put("/<int:event_id>")
@@ -88,16 +97,44 @@ def update_event(event_id: int):
     event, error = EventService.update(event_id, name=name, date=date)
     if error == EventService.ERROR_EVENT_NOT_FOUND:
         return jsonify({"error": error}), 404
+    if error == EventService.ERROR_EVENT_ARCHIVED:
+        return jsonify({"error": error}), 409
     if error:
         return jsonify({"error": error}), 400
 
-    return jsonify({"id": event.id, "name": event.name, "date": event.date.isoformat(), "group_id": event.group_id})
+    return jsonify(_event_dict(event))
 
 
 @bp.delete("/<int:event_id>")
 @superuser_required
 def delete_event(event_id: int):
-    deleted = EventService.delete(event_id)
-    if not deleted:
-        return jsonify({"error": "Event not found"}), 404
+    deleted, error = EventService.delete(event_id)
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
+        return jsonify({"error": error}), 404
+    if error == EventService.ERROR_EVENT_NOT_ARCHIVED:
+        return jsonify({"error": error}), 409
+    if error:
+        return jsonify({"error": error}), 400
     return "", 204
+
+
+@bp.post("/<int:event_id>/archive")
+@superuser_required
+def archive_event(event_id: int):
+    event, error = EventService.archive(event_id)
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
+        return jsonify({"error": error}), 404
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify(_event_dict(event))
+
+
+@bp.post("/<int:event_id>/unarchive")
+@superuser_required
+def unarchive_event(event_id: int):
+    event, error = EventService.unarchive(event_id)
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
+        return jsonify({"error": error}), 404
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify(_event_dict(event))

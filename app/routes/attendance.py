@@ -70,15 +70,23 @@ def update_attendance(attendance_id: int):
     if "present" not in data:
         return jsonify({"error": "present is required"}), 400
 
-    record = AttendanceService.update(attendance_id, present=bool(data["present"]))
-    if not record:
-        return jsonify({"error": "Attendance record not found"}), 404
+    record, error = AttendanceService.update(attendance_id, present=bool(data["present"]))
+    if error == "Attendance record not found":
+        return jsonify({"error": error}), 404
+    if error == "Event is archived":
+        return jsonify({"error": error}), 409
+    if error:
+        return jsonify({"error": error}), 400
     return jsonify({"id": record.id, "event_id": record.event_id, "member_id": record.member_id, "present": record.present})
 
 
 @bp.delete("/<int:attendance_id>")
 def delete_attendance(attendance_id: int):
-    deleted = AttendanceService.delete(attendance_id)
-    if not deleted:
-        return jsonify({"error": "Attendance record not found"}), 404
+    deleted, error = AttendanceService.delete(attendance_id)
+    if error == "Attendance record not found":
+        return jsonify({"error": error}), 404
+    if error == "Event is archived":
+        return jsonify({"error": error}), 409
+    if error:
+        return jsonify({"error": error}), 400
     return "", 204

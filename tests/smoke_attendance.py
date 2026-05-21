@@ -211,6 +211,33 @@ class TestAttendanceCRUD(unittest.TestCase):
         self.assertEqual(data["present_count"], 1)
         self.assertEqual(data["absent_count"], 1)
 
+    def test_record_blocked_for_archived_event_returns_400(self):
+        self.client.post(f"/api/events/{self.event_id}/archive")
+        resp = self._record()
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertIn("archived", data["error"].lower())
+
+    def test_update_blocked_for_archived_event_returns_409(self):
+        create_resp = self._record(present=True)
+        record_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{self.event_id}/archive")
+
+        resp = self.client.put(
+            f"/api/attendance/{record_id}",
+            data=json.dumps({"present": False}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 409)
+
+    def test_delete_blocked_for_archived_event_returns_409(self):
+        create_resp = self._record()
+        record_id = json.loads(create_resp.data)["id"]
+        self.client.post(f"/api/events/{self.event_id}/archive")
+
+        resp = self.client.delete(f"/api/attendance/{record_id}")
+        self.assertEqual(resp.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

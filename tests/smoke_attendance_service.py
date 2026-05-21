@@ -17,6 +17,7 @@ from app.models.group import Group
 from app.models.event import Event
 from app.models.member import Member
 from app.services.attendance_service import AttendanceService
+from app.services.event_service import EventService
 
 
 def _make_app():
@@ -112,23 +113,29 @@ class TestAttendanceService(unittest.TestCase):
         record, _ = AttendanceService.record(
             event_id=self.event_id, member_id=self.member_id, present=True
         )
-        updated = AttendanceService.update(record.id, present=False)
+        updated, error = AttendanceService.update(record.id, present=False)
+        self.assertIsNone(error)
         self.assertIsNotNone(updated)
         self.assertFalse(updated.present)
 
     def test_update_returns_none_for_missing(self):
-        self.assertIsNone(AttendanceService.update(9999, present=True))
+        result, error = AttendanceService.update(9999, present=True)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
 
     def test_delete_removes_record(self):
         record, _ = AttendanceService.record(
             event_id=self.event_id, member_id=self.member_id, present=True
         )
-        result = AttendanceService.delete(record.id)
-        self.assertTrue(result)
+        deleted, error = AttendanceService.delete(record.id)
+        self.assertTrue(deleted)
+        self.assertIsNone(error)
         self.assertEqual(AttendanceService.get_all(), [])
 
     def test_delete_returns_false_for_missing(self):
-        self.assertFalse(AttendanceService.delete(9999))
+        deleted, error = AttendanceService.delete(9999)
+        self.assertFalse(deleted)
+        self.assertIsNotNone(error)
 
     def test_record_member_not_in_event_group_returns_error(self):
         other_group = Group(name="Other Group")
@@ -157,6 +164,42 @@ class TestAttendanceService(unittest.TestCase):
         self.assertEqual(status["expected_count"], 2)
         self.assertEqual(status["present_count"], 1)
         self.assertEqual(status["absent_count"], 1)
+
+    def test_record_blocked_for_archived_event(self):
+        EventService.archive(self.event_id)
+        record, error = AttendanceService.record(
+            event_id=self.event_id, member_id=self.member_id, present=True
+        )
+        self.assertIsNone(record)
+        self.assertIsNotNone(error)
+        self.assertIn("archived", error.lower())
+
+    def test_update_blocked_for_archived_event(self):
+        record, _ = AttendanceService.record(
+            event_id=self.event_id, member_id=self.member_id, present=True
+        )
+        EventService.archive(self.event_id)
+        result, error = AttendanceService.update(record.id, present=False)
+        self.assertIsNone(result)
+        self.assertIn("archived", error.lower())
+
+    def test_delete_blocked_for_archived_event(self):
+        record, _ = AttendanceService.record(
+            event_id=self.event_id, member_id=self.member_id, present=True
+        )
+        EventService.archive(self.event_id)
+        deleted, error = AttendanceService.delete(record.id)
+        self.assertFalse(deleted)
+        self.assertIn("archived", error.lower())
+
+    def test_unarchive_allows_record_again(self):
+        EventService.archive(self.event_id)
+        EventService.unarchive(self.event_id)
+        record, error = AttendanceService.record(
+            event_id=self.event_id, member_id=self.member_id, present=True
+        )
+        self.assertIsNone(error)
+        self.assertIsNotNone(record)
 
 
 if __name__ == "__main__":
