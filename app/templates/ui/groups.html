@@ -61,8 +61,10 @@
             </a>
           </td>
           <td>
+            {% if item.group.name != 'ALL MEMBERS' %}
             <a href="{{ url_for('ui.edit_group', group_id=item.group.id) }}"
                class="btn btn-sm btn-outline-primary me-1">Rename</a>
+            {% endif %}
             {% if current_user.is_superuser %}
             <form method="post" action="{{ url_for('ui.delete_group', group_id=item.group.id) }}"
                   class="d-inline"
