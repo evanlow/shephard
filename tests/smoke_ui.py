@@ -7,7 +7,7 @@ submissions for members, groups, events, attendance, and reports.
 import sys
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -151,6 +151,27 @@ class TestMembersUI(unittest.TestCase):
         resp = self.client.post(f"/members/{mid}/delete")
         self.assertEqual(resp.status_code, 302)
         self.assertIsNone(db.session.get(Member, mid))
+
+    def test_update_member_member_since_updates_dates(self):
+        """Submitting member_since updates created_at and ALL MEMBERS joined_at."""
+        from app.models.membership import member_groups as mg
+        member = Member(name="Frank Lee")
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.post(
+            f"/members/{member.id}/edit",
+            data={"name": "Frank Lee", "member_since": "2020-03-15"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.expire_all()
+        updated = db.session.get(Member, member.id)
+        self.assertEqual(updated.created_at.date(), date(2020, 3, 15))
+        joined_at = db.session.execute(
+            db.select(mg.c.joined_at).where(mg.c.member_id == member.id)
+        ).scalar()
+        self.assertIsNotNone(joined_at)
+        joined_date = joined_at.date() if hasattr(joined_at, "date") else datetime.fromisoformat(str(joined_at)).date()
+        self.assertEqual(joined_date, date(2020, 3, 15))
 
 
 # ---------------------------------------------------------------------------

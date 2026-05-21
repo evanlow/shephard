@@ -18,6 +18,12 @@
         <label class="form-label">Name <span class="text-danger">*</span></label>
         <input type="text" name="name" class="form-control" value="{{ member.name }}" required />
       </div>
+      <div class="mb-3">
+        <label class="form-label">Member since</label>
+        <input type="date" name="member_since" class="form-control"
+               value="{{ member.created_at.strftime('%Y-%m-%d') }}" />
+        <div class="form-text">Used to determine which past events this member is expected at.</div>
+      </div>
       <div class="mb-4">
         <label class="form-label">Additional Groups</label>
         <select name="group_ids" class="form-select" multiple size="6">

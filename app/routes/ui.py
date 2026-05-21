@@ -93,6 +93,15 @@ def update_member(member_id: int):
     group_ids = [int(group_id) for group_id in request.form.getlist("group_ids") if group_id]
     groups_provided = raw_group is not None or bool(request.form.getlist("group_ids"))
 
+    member_since_str = request.form.get("member_since", "").strip()
+    member_since = None
+    if member_since_str:
+        try:
+            member_since = datetime.strptime(member_since_str, "%Y-%m-%d")
+        except ValueError:
+            flash("Invalid date format for 'Member since'.", "error")
+            return redirect(url_for("ui.edit_member", member_id=member_id))
+
     member, error = MemberService.update(
         member_id,
         name=name,
@@ -106,6 +115,17 @@ def update_member(member_id: int):
     if error:
         flash(error, "error")
         return redirect(url_for("ui.edit_member", member_id=member_id))
+
+    if member_since is not None:
+        member.created_at = member_since
+        default_group = GroupService.get_default_group()
+        db.session.execute(
+            member_groups.update()
+            .where(member_groups.c.member_id == member_id)
+            .where(member_groups.c.group_id == default_group.id)
+            .values(joined_at=member_since)
+        )
+        db.session.commit()
 
     flash(f"Member '{member.name}' updated.", "success")
     return redirect(url_for("ui.members"))
