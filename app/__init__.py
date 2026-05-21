@@ -75,6 +75,12 @@ def _ensure_sqlite_schema_compatibility() -> None:
                         "ADD COLUMN joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
                     )
                 )
+                # Backfill existing rows with the epoch so they predate all events
+                # and are never incorrectly excluded from historical reports.
+                # New rows created after this migration will get CURRENT_TIMESTAMP.
+                conn.execute(
+                    text("UPDATE member_groups SET joined_at = '1970-01-01 00:00:00'")
+                )
 
 
 def _ensure_default_group_membership() -> None:
