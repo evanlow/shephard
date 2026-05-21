@@ -1,6 +1,6 @@
-# Shepherd — Admin Guide
+# Shepherd — Deployment Guide
 
-**Shepherd** is a church attendance management system. This guide covers everything an administrator needs to set up, run, and manage the system.
+This guide covers everything needed to install, configure, and run the Shepherd server. For day-to-day usage, see [ADMIN_ROLE_GUIDE.md](ADMIN_ROLE_GUIDE.md) (Admin users) and [SUPERUSERS_GUIDE.md](SUPERUSERS_GUIDE.md) (Superusers).
 
 ---
 

@@ -128,4 +128,6 @@ Expected output: `123 passed, 0 failed` across 9 smoke test files.
 
 ## Documentation
 
-- [ADMIN_GUIDE.md](ADMIN_GUIDE.md) — full setup, user management, database, PostgreSQL migration, and URL reference
+- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) — server setup, database, PostgreSQL migration, environment variables, and URL reference
+- [ADMIN_ROLE_GUIDE.md](ADMIN_ROLE_GUIDE.md) — day-to-day usage guide for Admin-role users
+- [SUPERUSERS_GUIDE.md](SUPERUSERS_GUIDE.md) — full feature reference for Superusers (includes all Admin capabilities plus delete, archive, and user management)

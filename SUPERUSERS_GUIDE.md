@@ -49,7 +49,7 @@ http://<your-server>/login
 
 Enter your username and password. After login you will be taken to the **Dashboard**, which gives you a summary of members, groups, and upcoming events.
 
-> If you have forgotten your password, a Superuser account can only be reset directly in the database. See the [ADMIN_GUIDE.md](ADMIN_GUIDE.md) for database access instructions.
+> If you have forgotten your password, a Superuser account can only be reset directly in the database. See the [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for database access instructions.
 
 ---
 
