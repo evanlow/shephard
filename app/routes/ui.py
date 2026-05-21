@@ -440,6 +440,54 @@ def mark_absent(event_id: int):
     return redirect(url_for("ui.attendance", event_id=event_id))
 
 
+@bp.post("/events/<int:event_id>/attendance/quick_add")
+@admin_required
+def attendance_quick_add(event_id: int):
+    """Create a new member and immediately mark them present — for walk-ins during an event."""
+    from flask import jsonify
+
+    event = EventService.get_by_id(event_id)
+    if not event:
+        return jsonify({"error": "Event not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    # Create member and add them to ALL MEMBERS + the event's specific group
+    member, error = MemberService.create(name=name, group_id=event.group_id)
+    if error:
+        return jsonify({"error": error}), 400
+
+    # Set joined_at for all this member's group memberships to the event date so
+    # they appear in this (possibly past) event when the attendance filter runs.
+    db.session.execute(
+        member_groups.update()
+        .where(member_groups.c.member_id == member.id)
+        .values(joined_at=event.date)
+    )
+    db.session.commit()
+
+    _, error = AttendanceService.record(
+        event_id=event_id,
+        member_id=member.id,
+        present=True,
+        marked_by=current_user.id,
+    )
+    if error:
+        return jsonify({"error": error}), 400
+
+    records = AttendanceService.get_all(event_id=event_id, member_id=member.id)
+    attendance_id = records[0].id if records else None
+
+    return jsonify({
+        "member_id": member.id,
+        "member_name": member.name,
+        "attendance_id": attendance_id,
+    }), 201
+
+
 @bp.get("/events/<int:event_id>/attendance/pdf")
 @admin_required
 def attendance_pdf(event_id: int):

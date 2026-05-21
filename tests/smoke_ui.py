@@ -548,6 +548,68 @@ class TestAttendanceUI(unittest.TestCase):
         self.assertIn(b"Alice", resp.data)
         self.assertIn(b"Bob", resp.data)
 
+    def test_quick_add_creates_member_and_marks_present(self):
+        """Quick-add creates a new member and records them as present for the event."""
+        import json
+        from app.models.attendance import Attendance
+
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/quick_add",
+            data=json.dumps({"name": "Walk In Person"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.get_json()
+        self.assertEqual(data["member_name"], "Walk In Person")
+        self.assertIsNotNone(data["attendance_id"])
+
+        member = db.session.get(Member, data["member_id"])
+        self.assertIsNotNone(member)
+        rec = db.session.execute(
+            db.select(Attendance).where(
+                Attendance.event_id == self.event.id,
+                Attendance.member_id == member.id,
+            )
+        ).scalar_one_or_none()
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec.present)
+
+    def test_quick_add_sets_joined_at_to_event_date(self):
+        """Quick-add member's joined_at is set to the event's date."""
+        import json
+        from app.models.membership import member_groups as mg
+
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/quick_add",
+            data=json.dumps({"name": "Late Arrival"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        member_id = resp.get_json()["member_id"]
+
+        rows = db.session.execute(
+            db.select(mg.c.joined_at).where(mg.c.member_id == member_id)
+        ).scalars().all()
+        self.assertTrue(len(rows) > 0)
+        for joined_at in rows:
+            joined_date = (
+                joined_at.date()
+                if hasattr(joined_at, "date")
+                else datetime.fromisoformat(str(joined_at)).date()
+            )
+            self.assertEqual(joined_date, date(2099, 12, 31))
+
+    def test_quick_add_missing_name_returns_400(self):
+        """Quick-add with an empty name returns 400."""
+        import json
+
+        resp = self.client.post(
+            f"/events/{self.event.id}/attendance/quick_add",
+            data=json.dumps({"name": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
 
 # ---------------------------------------------------------------------------
 # Reports UI

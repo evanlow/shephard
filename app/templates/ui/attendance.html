@@ -99,6 +99,19 @@
 </div>
 
 {% endif %}
+
+<!-- Walk-in quick-add — always visible -->
+<div class="card mt-3">
+  <div class="card-body py-2">
+    <h6 class="card-title mb-2">Walk-in</h6>
+    <div class="input-group input-group-sm">
+      <input type="text" id="quickAddName" class="form-control"
+             placeholder="New member name…" autocomplete="off" />
+      <button class="btn btn-success" type="button" id="quickAddBtn">Add &amp; Mark Present</button>
+    </div>
+    <div id="quickAddError" class="text-danger small mt-1" style="display:none;"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -115,84 +128,83 @@
     ac.textContent = Math.max(0, parseInt(ac.textContent) - presentDelta);
   }
 
-  document.querySelectorAll('.mark-btn').forEach(btn => {
-    btn.addEventListener('click', async function () {
-      if (this.disabled) return;
-      const row = this.closest('tr');
-      const memberId = row.dataset.memberId;
-      const attendanceId = row.dataset.attendanceId;
+  async function handleMarkBtn() {
+    if (this.disabled) return;
+    const row = this.closest('tr');
+    const memberId = row.dataset.memberId;
+    const attendanceId = row.dataset.attendanceId;
 
-      let resp;
-      if (attendanceId) {
-        resp = await fetch(`/api/attendance/${attendanceId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ present: true }),
-        });
-      } else {
-        resp = await fetch('/api/attendance/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event_id: EVENT_ID, member_id: parseInt(memberId), present: true }),
-        });
-      }
-
-      if (resp.ok) {
-        const data = await resp.json();
-        row.dataset.attendanceId = data.id;
-        row.dataset.present = 'true';
-        const badge = row.querySelector('.status-badge');
-        badge.className = 'badge status-badge bg-success';
-        badge.textContent = 'Present';
-        this.disabled = true;
-        this.classList.add('disabled');
-        const unmarkBtn = row.querySelector('.unmark-btn');
-        unmarkBtn.disabled = false;
-        unmarkBtn.classList.remove('disabled');
-        updateCounters(1);
-        applyFilter();
-      } else {
-        alert('Failed to mark attendance. Please try again.');
-      }
-    });
-  });
-
-  document.querySelectorAll('.unmark-btn').forEach(btn => {
-    btn.addEventListener('click', async function () {
-      if (this.disabled) return;
-      const row = this.closest('tr');
-      const attendanceId = row.dataset.attendanceId;
-      if (!attendanceId) return;
-
-      const resp = await fetch(`/api/attendance/${attendanceId}`, {
+    let resp;
+    if (attendanceId) {
+      resp = await fetch(`/api/attendance/${attendanceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ present: false }),
+        body: JSON.stringify({ present: true }),
       });
+    } else {
+      resp = await fetch('/api/attendance/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: EVENT_ID, member_id: parseInt(memberId), present: true }),
+      });
+    }
 
-      if (resp.ok) {
-        row.dataset.present = 'false';
-        const badge = row.querySelector('.status-badge');
-        badge.className = 'badge status-badge bg-secondary';
-        badge.textContent = 'Absent';
-        this.disabled = true;
-        this.classList.add('disabled');
-        const markBtn = row.querySelector('.mark-btn');
-        markBtn.disabled = false;
-        markBtn.classList.remove('disabled');
-        updateCounters(-1);
-        applyFilter();
-      } else {
-        alert('Failed to update attendance. Please try again.');
-      }
+    if (resp.ok) {
+      const data = await resp.json();
+      row.dataset.attendanceId = data.id;
+      row.dataset.present = 'true';
+      const badge = row.querySelector('.status-badge');
+      badge.className = 'badge status-badge bg-success';
+      badge.textContent = 'Present';
+      this.disabled = true;
+      this.classList.add('disabled');
+      const unmarkBtn = row.querySelector('.unmark-btn');
+      unmarkBtn.disabled = false;
+      unmarkBtn.classList.remove('disabled');
+      updateCounters(1);
+      applyFilter();
+    } else {
+      alert('Failed to mark attendance. Please try again.');
+    }
+  }
+
+  async function handleUnmarkBtn() {
+    if (this.disabled) return;
+    const row = this.closest('tr');
+    const attendanceId = row.dataset.attendanceId;
+    if (!attendanceId) return;
+
+    const resp = await fetch(`/api/attendance/${attendanceId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ present: false }),
     });
-  });
+
+    if (resp.ok) {
+      row.dataset.present = 'false';
+      const badge = row.querySelector('.status-badge');
+      badge.className = 'badge status-badge bg-secondary';
+      badge.textContent = 'Absent';
+      this.disabled = true;
+      this.classList.add('disabled');
+      const markBtn = row.querySelector('.mark-btn');
+      markBtn.disabled = false;
+      markBtn.classList.remove('disabled');
+      updateCounters(-1);
+      applyFilter();
+    } else {
+      alert('Failed to update attendance. Please try again.');
+    }
+  }
+
+  document.querySelectorAll('.mark-btn').forEach(btn => btn.addEventListener('click', handleMarkBtn));
+  document.querySelectorAll('.unmark-btn').forEach(btn => btn.addEventListener('click', handleUnmarkBtn));
 
   // --- Search & filter ---
   let activeFilter = 'all';
 
   function applyFilter() {
-    const q = document.getElementById('memberSearch').value.toLowerCase();
+    const q = document.getElementById('memberSearch') ? document.getElementById('memberSearch').value.toLowerCase() : '';
     document.querySelectorAll('#attendanceTable tbody tr').forEach(row => {
       const name = (row.querySelector('.member-name') || {}).textContent || '';
       const present = row.dataset.present;
@@ -205,7 +217,8 @@
     });
   }
 
-  document.getElementById('memberSearch').addEventListener('input', applyFilter);
+  const memberSearchEl = document.getElementById('memberSearch');
+  if (memberSearchEl) memberSearchEl.addEventListener('input', applyFilter);
 
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -215,5 +228,79 @@
       applyFilter();
     });
   });
+
+  // --- Walk-in quick-add ---
+  const quickAddBtn = document.getElementById('quickAddBtn');
+  if (quickAddBtn) {
+    quickAddBtn.addEventListener('click', async function () {
+      const nameInput = document.getElementById('quickAddName');
+      const errDiv   = document.getElementById('quickAddError');
+      const name = nameInput.value.trim();
+      errDiv.style.display = 'none';
+
+      if (!name) {
+        errDiv.textContent = 'Name is required.';
+        errDiv.style.display = '';
+        return;
+      }
+
+      quickAddBtn.disabled = true;
+      const resp = await fetch(`/events/${EVENT_ID}/attendance/quick_add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      quickAddBtn.disabled = false;
+
+      if (resp.ok) {
+        const data = await resp.json();
+        nameInput.value = '';
+
+        const tbody = document.querySelector('#attendanceTable tbody');
+        if (!tbody) {
+          // Table not rendered (empty group); reload to show the full list
+          window.location.reload();
+          return;
+        }
+
+        // Increment expected count
+        const ec = document.getElementById('expected-count');
+        ec.textContent = parseInt(ec.textContent) + 1;
+
+        // Inject new row already marked present
+        const escapedName = data.member_name
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const row = document.createElement('tr');
+        row.dataset.memberId     = data.member_id;
+        row.dataset.attendanceId = data.attendance_id;
+        row.dataset.present      = 'true';
+        row.innerHTML = `
+          <td class="member-name align-middle fw-semibold">${escapedName}</td>
+          <td class="align-middle">
+            <span class="badge status-badge bg-success">Present</span>
+          </td>
+          <td class="align-middle text-end">
+            <button class="btn btn-success mark-btn disabled" disabled>Present ✓</button>
+            <button class="btn btn-outline-secondary btn-sm unmark-btn">Undo</button>
+          </td>`;
+        tbody.appendChild(row);
+        row.querySelector('.mark-btn').addEventListener('click', handleMarkBtn);
+        row.querySelector('.unmark-btn').addEventListener('click', handleUnmarkBtn);
+
+        updateCounters(1);
+        applyFilter();
+        nameInput.focus();
+      } else {
+        const data = await resp.json().catch(() => ({}));
+        errDiv.textContent = data.error || 'Failed to add member. Please try again.';
+        errDiv.style.display = '';
+      }
+    });
+
+    // Allow pressing Enter in the name field to trigger quick-add
+    document.getElementById('quickAddName').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') quickAddBtn.click();
+    });
+  }
 </script>
 {% endblock %}
