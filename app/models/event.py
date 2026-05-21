@@ -13,7 +13,7 @@ class Event(db.Model):
     date = db.Column(db.DateTime, nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey("groups.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    is_archived = db.Column(db.Boolean, nullable=False, default=False, server_default="0")
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("false"))
 
     group = db.relationship("Group", back_populates="events")
     attendance_records = db.relationship("Attendance", back_populates="event", cascade="all, delete-orphan")

@@ -52,6 +52,18 @@ def _ensure_sqlite_schema_compatibility() -> None:
             if "marked_by" not in attendance_columns:
                 conn.execute(text("ALTER TABLE attendance ADD COLUMN marked_by INTEGER"))
 
+        if "events" in tables:
+            event_columns = {
+                row[1] for row in conn.execute(text("PRAGMA table_info(events)"))
+            }
+            if "is_archived" not in event_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE events "
+                        "ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
 
 def _ensure_default_group_membership() -> None:
     default_group = GroupService.get_default_group()

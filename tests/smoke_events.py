@@ -320,6 +320,7 @@ class TestEventsCRUD(unittest.TestCase):
         self.client.post(f"/api/events/{event_id}/unarchive")
 
         resp = self.client.get("/api/events/")
+        self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.data)
         names = [e["name"] for e in data]
         self.assertIn("Temporary Archive", names)
