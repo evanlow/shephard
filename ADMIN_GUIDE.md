@@ -154,6 +154,29 @@ POST /api/members/
 
 The response will include both a `group_ids` list and a `groups` list (name + id) reflecting all current memberships. ALL MEMBERS is always included automatically — you do not need to pass its ID.
 
+### Deactivating a member
+
+When a member leaves the church, deactivate them rather than deleting them. This preserves all their past attendance records while excluding them from future events.
+
+1. On the **Members** page, click **Deactivate** next to the member.
+2. Enter their **last active day** — events on and before this date still list them; events after will not.
+3. Click **Confirm**.
+
+Deactivated members appear in the list with an **Inactive** badge (hidden by default — tick **Show inactive** to see them).
+
+### Reactivating a member
+
+If a deactivated member returns:
+
+1. On the **Members** page, tick **Show inactive** to reveal deactivated members.
+2. Click **Reactivate** next to the member.
+3. Enter their **rejoin date** — they will appear in attendance from this date onward.
+4. Click **Confirm**.
+
+Reactivation updates the member's group join date to the rejoin date so the gap period is correctly excluded from reports. Past attendance records are never altered.
+
+Both actions are also available from the member's **Edit** page in a dedicated Membership Status card.
+
 ---
 
 ## 7. Managing Events
@@ -187,6 +210,8 @@ This means:
 - Members whose group join date is **unknown** (i.e. they existed before this feature was introduced) are treated as having always been in the group and will appear on all historical reports.
 
 This behaviour ensures that archived event reports remain an accurate record of who was expected to attend at the time.
+
+- A **deactivated member** is excluded from all events that fall after their last active date. Events on or before their last active day still show them as expected. Their past attendance records are never removed.
 
 ---
 
@@ -286,8 +311,16 @@ Configure these in your `.env` file (copied from `.env.example`).
 | `GET /admin/users/new` | Superuser | Create user form |
 | `POST /admin/users/new` | Superuser | Submit new user |
 | `POST /admin/users/<id>/delete` | Superuser | Delete a user |
+| `GET /members` | Admin | Members list + add form |
+| `GET /members/<id>/edit` | Admin | Edit member form |
+| `POST /members/<id>/edit` | Admin | Submit member edit |
+| `POST /members/<id>/deactivate` | Admin | Deactivate a member |
+| `POST /members/<id>/reactivate` | Admin | Reactivate a member |
 | `GET /events/<id>/edit` | Admin | Edit event form |
 | `POST /events/<id>/edit` | Admin | Submit event edit form |
+| `GET /events/<id>/attendance` | Admin | Take attendance for event |
+| `POST /events/<id>/attendance/quick_add` | Admin | Walk-in quick-add (JSON body: `{"name": "..."}`) |
+| `GET /events/<id>/attendance/pdf` | Admin | Download attendance PDF |
 
 ### REST API
 

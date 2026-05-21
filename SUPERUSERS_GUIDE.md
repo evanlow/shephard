@@ -30,6 +30,7 @@ Shepherd has two types of admin accounts:
 | Take attendance | ✅ | ✅ |
 | Download attendance PDFs | ✅ | ✅ |
 | View reports | ✅ | ✅ |
+| Deactivate / reactivate members | ✅ | ✅ |
 | **Delete** members, groups | ❌ | ✅ |
 | **Archive / unarchive** events | ❌ | ✅ |
 | **Delete** events (archived only) | ❌ | ✅ |
@@ -109,9 +110,34 @@ Every new member is automatically enrolled in the **ALL MEMBERS** group. If you 
 2. Update the name and/or group assignments.
 3. Click **Save**.
 
+### Deactivating a member
+
+When a member leaves the church, deactivate them instead of deleting them. Their past attendance records and reports are preserved; they simply stop appearing in future events.
+
+1. Click **Deactivate** next to the member on the **Members** page.
+2. Enter their **last active day** — events on and before this date still list them; events after will not.
+3. Click **Confirm**.
+
+Deactivated members are hidden by default. Tick **Show inactive** to reveal them — they display an **Inactive** badge with their deactivation date and are greyed out.
+
+### Reactivating a member
+
+If a deactivated member returns to the church:
+
+1. Tick **Show inactive** on the **Members** page.
+2. Click **Reactivate** next to the member.
+3. Enter their **rejoin date**.
+4. Click **Confirm**.
+
+The member's group join date is updated to the rejoin date, correctly excluding the gap period from all future reports. All past attendance records remain untouched.
+
+Both actions are also available from the member's **Edit** page in a Membership Status card at the bottom.
+
 ### Deleting a member *(Superuser only)*
 
 Click the **Delete** button next to the member. This permanently removes the member and all their attendance records.
+
+> Consider deactivating instead of deleting — deactivation preserves history while excluding the member from future events.
 
 > Regular Admins cannot delete members — only Superusers can.
 
@@ -248,6 +274,16 @@ An event **must be archived before it can be deleted**. Attempting to delete an 
 
 > **Attendance cannot be taken for archived events.** The attendance page and API will block any changes.
 
+### Walk-in quick-add
+
+If a visitor or new member attends who is not yet in the system:
+
+1. On the attendance page, use the **Walk-in Quick-Add** card at the top.
+2. Type the person's name and click **Add & Mark Present**.
+3. Shepherd creates the member, enrolls them in ALL MEMBERS and the event's group (with a join date of the event date), and marks them present — all in one step.
+
+Deactivated members do not appear in the expected list. Only members who were in the group on or before the event date (and not yet deactivated) are shown.
+
 ---
 
 ## 9. Reports and PDF Export
@@ -284,7 +320,10 @@ The PDF includes:
 | `GET /members` | Members list + add form |
 | `GET /members/<id>/edit` | Edit member form |
 | `POST /members/<id>/edit` | Submit member edit |
+| `POST /members/<id>/deactivate` | Deactivate a member |
+| `POST /members/<id>/reactivate` | Reactivate a member |
 | `POST /members/<id>/delete` | **Superuser only** — delete member |
+| `POST /events/<id>/attendance/quick_add` | Walk-in quick-add during attendance |
 | `GET /groups` | Groups list + add form |
 | `GET /groups/<id>/edit` | Edit group form |
 | `POST /groups/<id>/edit` | Submit group edit |
