@@ -7,7 +7,7 @@ from openpyxl.styles import Font
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required, login_user, logout_user
-from sqlalchemy import text
+from sqlalchemy import insert as sa_insert, text
 
 from ..extensions import db
 from ..models.attendance import Attendance
@@ -19,6 +19,10 @@ from ..models.user import User
 from ..services.attendance_service import AttendanceService
 
 bp = Blueprint("auth", __name__)
+
+# Expected structure constants used for both export validation and restore
+_MEMBERS_HEADERS = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"]
+_EVENT_META_LABELS = ["Event:", "Date:", "Group:", "Archived:"]
 
 
 def admin_required(f):
@@ -385,3 +389,244 @@ def export_all():
         as_attachment=True,
         download_name=filename,
     )
+
+
+# ---------------------------------------------------------------------------
+# Restore helpers
+# ---------------------------------------------------------------------------
+
+def _parse_restore_date(value):
+    """Parse an exported date string (dd Mon YYYY) into a UTC datetime."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%d %b %Y").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _validate_export_workbook(wb):
+    """Return an error string if the workbook doesn't match the export format, else None."""
+    if not wb.sheetnames or wb.sheetnames[0] != "Members":
+        return "Invalid file: first sheet must be named 'Members'."
+    ws = wb["Members"]
+    actual_headers = [ws.cell(row=1, column=c).value for c in range(1, 8)]
+    if actual_headers != _MEMBERS_HEADERS:
+        return "Invalid file: 'Members' sheet has unexpected column headers."
+    for sheet_name in wb.sheetnames[1:]:
+        ws_ev = wb[sheet_name]
+        labels = [ws_ev.cell(row=r, column=1).value for r in range(1, 5)]
+        if labels != _EVENT_META_LABELS:
+            return f"Invalid file: sheet '{sheet_name}' does not match the expected event layout."
+    return None
+
+
+def _import_workbook(wb):
+    """
+    Import members, groups, events, and attendance from a validated export workbook.
+    Uses Core-level INSERTs for members so the ORM after_insert listener is bypassed
+    and we can set created_at / joined_at to the original values.
+    Returns a summary dict.
+    """
+    from ..services.group_service import GroupService
+
+    ws_members = wb["Members"]
+
+    # ── Step 1: Collect every group name referenced anywhere in the file ──────
+    all_group_names = set()
+    for row in ws_members.iter_rows(min_row=2, values_only=True):
+        if row[0] is None:
+            break
+        if row[3]:
+            for g in str(row[3]).split(","):
+                g = g.strip()
+                if g:
+                    all_group_names.add(g)
+    for sheet_name in wb.sheetnames[1:]:
+        ws_ev = wb[sheet_name]
+        group_cell = ws_ev.cell(row=3, column=2).value
+        if group_cell:
+            all_group_names.add(str(group_cell).strip())
+
+    # ── Step 2: Ensure default group; create any missing custom groups ─────────
+    default_group = GroupService.get_default_group()
+    group_map = {DEFAULT_GROUP_NAME: default_group}
+
+    for name in sorted(all_group_names):
+        if name == DEFAULT_GROUP_NAME:
+            continue
+        existing = db.session.execute(
+            db.select(Group).where(Group.name == name)
+        ).scalar_one_or_none()
+        if existing:
+            group_map[name] = existing
+        else:
+            g = Group(name=name)
+            db.session.add(g)
+            db.session.flush()
+            group_map[name] = g
+
+    # ── Step 3: Import members via Core INSERT (bypasses ORM listener so we
+    #            can set created_at and joined_at to their original values) ─────
+    member_map = {}   # member name → member_id  (first occurrence wins)
+    members_created = 0
+
+    for row in ws_members.iter_rows(min_row=2, values_only=True):
+        if row[0] is None:
+            break
+        _, name, primary_group_name, all_groups_str, _status, member_since_str, deactivated_str = row
+        if not name:
+            continue
+
+        name = str(name).strip()
+        created_at = _parse_restore_date(member_since_str) or datetime.now(timezone.utc)
+
+        deactivated_at = None
+        if deactivated_str:
+            d = _parse_restore_date(deactivated_str)
+            if d:
+                deactivated_at = d.replace(hour=23, minute=59, second=59, microsecond=0)
+
+        pname = str(primary_group_name).strip() if primary_group_name else ""
+        primary_group = group_map.get(pname) if pname and pname != "—" else None
+        group_id = primary_group.id if primary_group and pname != DEFAULT_GROUP_NAME else None
+
+        # Core INSERT → ORM after_insert event does NOT fire
+        result = db.session.execute(
+            sa_insert(Member.__table__).values(
+                name=name,
+                group_id=group_id,
+                created_at=created_at,
+                deactivated_at=deactivated_at,
+            ).returning(Member.__table__.c.id)
+        )
+        member_id = result.scalar()
+
+        # Build the member_groups rows with the original joined_at
+        seen_gids = set()
+        groups_to_add = []
+
+        if all_groups_str:
+            for g_name in str(all_groups_str).split(","):
+                g_name = g_name.strip()
+                if not g_name:
+                    continue
+                g = group_map.get(g_name)
+                if g and g.id not in seen_gids:
+                    groups_to_add.append({"member_id": member_id, "group_id": g.id, "joined_at": created_at})
+                    seen_gids.add(g.id)
+
+        # Always ensure ALL MEMBERS membership exists
+        default_gid = default_group.id
+        if default_gid not in seen_gids:
+            groups_to_add.append({"member_id": member_id, "group_id": default_gid, "joined_at": created_at})
+
+        db.session.execute(member_groups.insert(), groups_to_add)
+
+        if name not in member_map:
+            member_map[name] = member_id
+        members_created += 1
+
+    # ── Step 4: Import events and attendance ──────────────────────────────────
+    events_created = 0
+    attendance_created = 0
+
+    for sheet_name in wb.sheetnames[1:]:
+        ws_ev = wb[sheet_name]
+        event_name = ws_ev.cell(row=1, column=2).value
+        date_str   = ws_ev.cell(row=2, column=2).value
+        group_name = ws_ev.cell(row=3, column=2).value
+        archived_s = ws_ev.cell(row=4, column=2).value
+
+        event_date = _parse_restore_date(date_str)
+        if not event_date or not event_name or not group_name:
+            continue
+
+        group = group_map.get(str(group_name).strip())
+        if not group:
+            continue
+
+        is_archived = str(archived_s).strip().lower() == "yes" if archived_s else False
+        event = Event(name=str(event_name).strip(), date=event_date,
+                      group_id=group.id, is_archived=is_archived)
+        db.session.add(event)
+        db.session.flush()
+        events_created += 1
+
+        # Attendance rows begin at row 7 (rows 1-4 meta, row 5 blank, row 6 header)
+        for r in range(7, ws_ev.max_row + 1):
+            num_val     = ws_ev.cell(row=r, column=1).value
+            name_val    = ws_ev.cell(row=r, column=2).value
+            present_val = ws_ev.cell(row=r, column=3).value
+            if not isinstance(num_val, int):
+                break   # blank row or summary section
+            if not name_val:
+                continue
+            mid = member_map.get(str(name_val).strip())
+            if mid is None:
+                continue
+            present = str(present_val).strip().lower() == "yes" if present_val else False
+            db.session.add(Attendance(event_id=event.id, member_id=mid, present=present))
+            attendance_created += 1
+
+    db.session.commit()
+    return {
+        "groups": len([k for k in group_map if k != DEFAULT_GROUP_NAME]),
+        "members": members_created,
+        "events": events_created,
+        "attendance": attendance_created,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Restore from backup (superuser only)
+# ---------------------------------------------------------------------------
+
+@bp.get("/admin/restore")
+@superuser_required
+def restore_page():
+    has_data = (
+        db.session.query(Member).count() > 0
+        or db.session.query(Event).count() > 0
+    )
+    return render_template("auth/restore.html", has_data=has_data)
+
+
+@bp.post("/admin/restore")
+@superuser_required
+def restore_upload():
+    f = request.files.get("backup")
+    if not f or not f.filename:
+        flash("No file selected.", "error")
+        return redirect(url_for("auth.restore_page"))
+
+    if not f.filename.lower().endswith(".xlsx"):
+        flash("Invalid file: only .xlsx spreadsheets are accepted.", "error")
+        return redirect(url_for("auth.restore_page"))
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()))
+    except Exception:
+        flash("Could not open file. Make sure it is a valid .xlsx spreadsheet.", "error")
+        return redirect(url_for("auth.restore_page"))
+
+    error = _validate_export_workbook(wb)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("auth.restore_page"))
+
+    try:
+        summary = _import_workbook(wb)
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Restore failed: {exc}", "error")
+        return redirect(url_for("auth.restore_page"))
+
+    parts = [
+        f"{summary['groups']} group{'s' if summary['groups'] != 1 else ''}",
+        f"{summary['members']} member{'s' if summary['members'] != 1 else ''}",
+        f"{summary['events']} event{'s' if summary['events'] != 1 else ''}",
+        f"{summary['attendance']} attendance record{'s' if summary['attendance'] != 1 else ''}",
+    ]
+    flash(f"Restore complete: {', '.join(parts)} imported.", "success")
+    return redirect(url_for("auth.restore_page"))
