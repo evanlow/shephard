@@ -64,6 +64,18 @@ def _ensure_sqlite_schema_compatibility() -> None:
                     )
                 )
 
+        if "member_groups" in tables:
+            mg_columns = {
+                row[1] for row in conn.execute(text("PRAGMA table_info(member_groups)"))
+            }
+            if "joined_at" not in mg_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE member_groups "
+                        "ADD COLUMN joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                    )
+                )
+
 
 def _ensure_default_group_membership() -> None:
     default_group = GroupService.get_default_group()
