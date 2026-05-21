@@ -89,7 +89,7 @@
                class="btn btn-sm btn-outline-primary me-1">Edit</a>
 
             {% if is_active %}
-              <button class="btn btn-sm btn-outline-warning"
+              <button class="btn btn-sm btn-outline-danger"
                       data-bs-toggle="collapse"
                       data-bs-target="#deact-{{ m.id }}">Deactivate</button>
             {% else %}
@@ -109,7 +109,7 @@
         </tr>
 
         {% if is_active %}
-        <tr class="collapse bg-warning bg-opacity-10 inactive-row" id="deact-{{ m.id }}"
+        <tr class="collapse bg-danger bg-opacity-10 inactive-row" id="deact-{{ m.id }}"
             data-active="true">
           <td colspan="6" class="py-2 ps-3">
             <form method="post" action="{{ url_for('ui.deactivate_member', member_id=m.id) }}"
@@ -117,7 +117,7 @@
               <span class="fw-semibold small">Last active day for {{ m.name }}:</span>
               <input type="date" name="deactivated_at" value="{{ today }}"
                      class="form-control form-control-sm" style="width: 170px;" required />
-              <button type="submit" class="btn btn-warning btn-sm">Confirm</button>
+              <button type="submit" class="btn btn-danger btn-sm">Confirm</button>
               <button type="button" class="btn btn-outline-secondary btn-sm"
                       data-bs-toggle="collapse"
                       data-bs-target="#deact-{{ m.id }}">Cancel</button>
