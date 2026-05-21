@@ -77,7 +77,7 @@
       <ul class="list-group list-group-flush">
         {% for m in status.present_members %}
         <li class="list-group-item d-flex align-items-center gap-2">
-          <span class="badge bg-success rounded-circle p-1">&nbsp;</span>
+          <span style="color: gold; font-size: 1.5rem; line-height: 1;">&#9733;</span>
           {{ m.name }}
         </li>
         {% else %}
@@ -97,7 +97,7 @@
       <ul class="list-group list-group-flush">
         {% for m in status.absent_members %}
         <li class="list-group-item d-flex align-items-center gap-2">
-          <span class="badge bg-danger rounded-circle p-1">&nbsp;</span>
+          <span style="color: hotpink; font-size: 1.1rem; line-height: 1; font-weight: bold;">&#10005;</span>
           {{ m.name }}
         </li>
         {% else %}
