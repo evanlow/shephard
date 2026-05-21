@@ -177,6 +177,17 @@ Content-Type: application/json
 
 You can supply `name`, `date`, or both. At least one field is required. An invalid or blank `name`, or an unparseable `date`, returns `400`.
 
+### Attendance reports and historical accuracy
+
+The **Reports** page (`/reports`) shows which members were present or absent for a given event. The expected member list is calculated at the time you view the report and reflects who was in the group **on or before the event date**.
+
+This means:
+- A member added to a group **after** an event took place will **not** appear in that event's report — they were not yet in the group when the event occurred.
+- A member who was in the group at the time of the event **will** appear, even if they have since been removed.
+- Members whose group join date is **unknown** (i.e. they existed before this feature was introduced) are treated as having always been in the group and will appear on all historical reports.
+
+This behaviour ensures that archived event reports remain an accurate record of who was expected to attend at the time.
+
 ---
 
 ## 8. The Database
@@ -217,7 +228,7 @@ SELECT * FROM users;
 | `users` | Admin accounts |
 | `members` | Church members |
 | `groups` | Ministry groups (e.g. Worship Service) |
-| `memberships` | Junction table linking members to groups (many-to-many) |
+| `member_groups` | Junction table linking members to groups (many-to-many) |
 | `events` | Scheduled services / gatherings |
 | `attendance` | Attendance records per event per member |
 
