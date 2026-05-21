@@ -64,6 +64,36 @@ def get_event(event_id: int):
     return jsonify({"id": event.id, "name": event.name, "date": event.date.isoformat(), "group_id": event.group_id})
 
 
+@bp.put("/<int:event_id>")
+def update_event(event_id: int):
+    data = request.get_json(silent=True) or {}
+    name = None
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "name cannot be blank"}), 400
+
+    date_str = data.get("date")
+    date = None
+
+    if date_str is not None:
+        try:
+            date = datetime.fromisoformat(date_str)
+        except ValueError:
+            return jsonify({"error": "date must be a valid ISO 8601 string"}), 400
+
+    if name is None and date is None:
+        return jsonify({"error": "provide name and/or date"}), 400
+
+    event, error = EventService.update(event_id, name=name, date=date)
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
+        return jsonify({"error": error}), 404
+    if error:
+        return jsonify({"error": error}), 400
+
+    return jsonify({"id": event.id, "name": event.name, "date": event.date.isoformat(), "group_id": event.group_id})
+
+
 @bp.delete("/<int:event_id>")
 @superuser_required
 def delete_event(event_id: int):

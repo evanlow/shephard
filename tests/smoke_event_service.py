@@ -106,6 +106,41 @@ class TestEventService(unittest.TestCase):
         self.assertEqual(events[0].name, "Later")
         self.assertEqual(events[1].name, "Earlier")
 
+    def test_update_name(self):
+        event, _ = EventService.create(name="Old Name", date=FUTURE_DATE, group_id=self.group_id)
+        updated, error = EventService.update(event.id, name="New Name")
+        self.assertIsNone(error)
+        self.assertEqual(updated.name, "New Name")
+        self.assertEqual(updated.date, FUTURE_DATE)
+
+    def test_update_date(self):
+        event, _ = EventService.create(name="My Event", date=FUTURE_DATE, group_id=self.group_id)
+        new_date = datetime(2027, 3, 15, 9, 30)
+        updated, error = EventService.update(event.id, date=new_date)
+        self.assertIsNone(error)
+        self.assertEqual(updated.date, new_date)
+        self.assertEqual(updated.name, "My Event")
+
+    def test_update_name_and_date(self):
+        event, _ = EventService.create(name="Original", date=FUTURE_DATE, group_id=self.group_id)
+        new_date = datetime(2027, 6, 1, 10, 0)
+        updated, error = EventService.update(event.id, name="Updated", date=new_date)
+        self.assertIsNone(error)
+        self.assertEqual(updated.name, "Updated")
+        self.assertEqual(updated.date, new_date)
+
+    def test_update_not_found_returns_error(self):
+        result, error = EventService.update(9999, name="Ghost")
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertIn("not found", error.lower())
+
+    def test_update_no_fields_returns_error(self):
+        event, _ = EventService.create(name="Noop", date=FUTURE_DATE, group_id=self.group_id)
+        result, error = EventService.update(event.id)
+        self.assertIsNone(result)
+        self.assertEqual(error, EventService.ERROR_NO_FIELDS_TO_UPDATE)
+
 
 if __name__ == "__main__":
     unittest.main()

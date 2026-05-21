@@ -264,6 +264,49 @@ def delete_event(event_id: int):
     return redirect(url_for("ui.events"))
 
 
+@bp.get("/events/<int:event_id>/edit")
+@admin_required
+def edit_event(event_id: int):
+    event = EventService.get_by_id(event_id)
+    if not event:
+        flash("Event not found.", "error")
+        return redirect(url_for("ui.events"))
+    return render_template("ui/event_edit.html", event=event)
+
+
+@bp.post("/events/<int:event_id>/edit")
+@admin_required
+def update_event(event_id: int):
+    name = request.form.get("name", "").strip() or None
+    date_str = request.form.get("date", "").strip()
+    date = None
+
+    if not name:
+        flash("Event name is required.", "error")
+        return redirect(url_for("ui.edit_event", event_id=event_id))
+
+    if date_str:
+        try:
+            date = datetime.fromisoformat(date_str)
+        except ValueError:
+            flash("Invalid date/time format.", "error")
+            return redirect(url_for("ui.edit_event", event_id=event_id))
+    else:
+        flash("Date and time are required.", "error")
+        return redirect(url_for("ui.edit_event", event_id=event_id))
+
+    event, error = EventService.update(event_id, name=name, date=date)
+    if error == EventService.ERROR_EVENT_NOT_FOUND:
+        flash("Event not found.", "error")
+        return redirect(url_for("ui.events"))
+    if error:
+        flash(error, "error")
+        return redirect(url_for("ui.edit_event", event_id=event_id))
+
+    flash(f"Event '{event.name}' updated.", "success")
+    return redirect(url_for("ui.events"))
+
+
 # ---------------------------------------------------------------------------
 # Attendance taking
 # ---------------------------------------------------------------------------

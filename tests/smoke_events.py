@@ -163,6 +163,74 @@ class TestEventsCRUD(unittest.TestCase):
         resp = self.client.delete("/api/events/9999")
         self.assertEqual(resp.status_code, 404)
 
+    def test_update_event_name_returns_200(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"name": "Updated Name"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(data["name"], "Updated Name")
+
+    def test_update_event_date_returns_200(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"date": "2027-01-01T09:00:00"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertIn("2027-01-01", data["date"])
+
+    def test_update_event_invalid_date_returns_400(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"date": "not-a-date"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_update_event_blank_name_returns_400(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({"name": "   ", "date": "2027-01-01T09:00:00"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(json.loads(resp.data)["error"], "name cannot be blank")
+
+    def test_update_event_no_fields_returns_400(self):
+        create_resp = self._create_event()
+        event_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/events/{event_id}",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_update_event_not_found_returns_404(self):
+        resp = self.client.put(
+            "/api/events/9999",
+            data=json.dumps({"name": "Ghost"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
