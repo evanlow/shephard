@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shepherd — System Purge</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; padding: 2rem; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #fff; border-radius: 8px; padding: 1rem 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.25rem; color: #1a1a2e; }
+    .btn {
+      display: inline-block; padding: 0.45rem 1rem;
+      border-radius: 6px; font-size: 0.875rem; font-weight: 600;
+      text-decoration: none; cursor: pointer; border: none;
+    }
+    .btn-ghost { color: #6b7280; background: none; }
+    .btn-ghost:hover { color: #111; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+    .btn-danger:disabled { background: #fca5a5; cursor: not-allowed; }
+    .alert { padding: 0.65rem 1rem; border-radius: 6px; font-size: 0.875rem; margin-bottom: 1rem; }
+    .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+    .warning-banner {
+      background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+      border-radius: 8px; padding: 0.85rem 1.25rem; margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .warning-banner strong { display: block; margin-bottom: 0.25rem; font-size: 1rem; }
+
+    .purge-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .purge-card {
+      background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      border-top: 4px solid #ef4444; padding: 1.25rem 1.5rem;
+    }
+    .purge-card h2 { font-size: 1rem; color: #111827; margin-bottom: 0.4rem; }
+    .purge-card p  { font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem; line-height: 1.5; }
+    .purge-card label { display: block; font-size: 0.8rem; font-weight: 600;
+                        color: #374151; margin-bottom: 0.35rem; }
+    .purge-card input[type="text"] {
+      width: 100%; padding: 0.4rem 0.65rem; border: 1px solid #d1d5db;
+      border-radius: 6px; font-size: 0.875rem; margin-bottom: 0.75rem;
+      font-family: monospace; letter-spacing: 0.05em;
+    }
+    .purge-card input[type="text"]:focus { outline: 2px solid #ef4444; border-color: #ef4444; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚠️ System Purge</h1>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      <a href="{{ url_for('auth.dashboard') }}" class="btn btn-ghost">&larr; Dashboard</a>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, msg in messages %}
+      <div class="alert alert-{{ category }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="warning-banner">
+    <strong>🛑 Irreversible Actions</strong>
+    These operations permanently delete data and cannot be undone. Use only to reset the system before first live use.
+    Type <code>PURGE</code> in each form to confirm.
+  </div>
+
+  <div class="purge-grid">
+
+    <!-- Purge Attendance -->
+    <div class="purge-card">
+      <h2>Clear All Attendance</h2>
+      <p>Deletes every attendance record across all events. Events and members are untouched.</p>
+      <form method="post" action="{{ url_for('auth.purge_attendance') }}" onsubmit="return checkConfirm(this)">
+        <label for="conf-attendance">Type PURGE to confirm</label>
+        <input type="text" id="conf-attendance" name="confirm"
+               placeholder="PURGE" autocomplete="off"
+               oninput="toggleBtn(this)" />
+        <button type="submit" class="btn btn-danger" id="btn-attendance" disabled>
+          Delete All Attendance
+        </button>
+      </form>
+    </div>
+
+    <!-- Purge Members -->
+    <div class="purge-card">
+      <h2>Clear All Members</h2>
+      <p>Deletes every member and all their attendance records. Groups and events are untouched.</p>
+      <form method="post" action="{{ url_for('auth.purge_members') }}" onsubmit="return checkConfirm(this)">
+        <label for="conf-members">Type PURGE to confirm</label>
+        <input type="text" id="conf-members" name="confirm"
+               placeholder="PURGE" autocomplete="off"
+               oninput="toggleBtn(this)" />
+        <button type="submit" class="btn btn-danger" id="btn-members" disabled>
+          Delete All Members
+        </button>
+      </form>
+    </div>
+
+    <!-- Purge Groups -->
+    <div class="purge-card">
+      <h2>Clear All Groups</h2>
+      <p>Deletes every custom group along with their events and attendance records. The <strong>ALL MEMBERS</strong> group is preserved.</p>
+      <form method="post" action="{{ url_for('auth.purge_groups') }}" onsubmit="return checkConfirm(this)">
+        <label for="conf-groups">Type PURGE to confirm</label>
+        <input type="text" id="conf-groups" name="confirm"
+               placeholder="PURGE" autocomplete="off"
+               oninput="toggleBtn(this)" />
+        <button type="submit" class="btn btn-danger" id="btn-groups" disabled>
+          Delete All Groups
+        </button>
+      </form>
+    </div>
+
+  </div>
+
+  <script>
+    function toggleBtn(input) {
+      const btn = input.closest('form').querySelector('button[type="submit"]');
+      btn.disabled = input.value.trim().toUpperCase() !== 'PURGE';
+    }
+    function checkConfirm(form) {
+      const val = form.querySelector('input[name="confirm"]').value.trim().toUpperCase();
+      if (val !== 'PURGE') { alert('Type PURGE to confirm.'); return false; }
+      return true;
+    }
+  </script>
+</body>
+</html>

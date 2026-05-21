@@ -252,5 +252,157 @@ class TestUserManagement(unittest.TestCase):
         self.assertIsNotNone(still_there)
 
 
+# ---------------------------------------------------------------------------
+# System Purge
+# ---------------------------------------------------------------------------
+
+class TestSystemPurge(unittest.TestCase):
+    def setUp(self):
+        self.app = _make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        self.superuser = _create_user("su", "su@test.com", "password123", is_superuser=True)
+        self.plain_user = _create_user("plain", "plain@test.com", "password123", is_superuser=False)
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def _login_as_superuser(self):
+        self.client.post("/login", data={"username": "su", "password": "password123"})
+
+    def _login_as_plain(self):
+        self.client.post("/login", data={"username": "plain", "password": "password123"})
+
+    def _seed(self):
+        """Create minimal data: one group, one member, one event, one attendance record."""
+        from app.models.group import Group
+        from app.models.member import Member
+        from app.models.event import Event
+        from app.models.attendance import Attendance
+        from app.services.group_service import GroupService
+        from datetime import datetime
+        default = GroupService.get_default_group()
+        group = Group(name="Worship")
+        db.session.add(group)
+        db.session.commit()
+        member = Member(name="Test Person")
+        db.session.add(member)
+        db.session.commit()
+        event = Event(name="Sunday", date=datetime(2026, 5, 1, 10, 0), group_id=group.id)
+        db.session.add(event)
+        db.session.commit()
+        att = Attendance(event_id=event.id, member_id=member.id, present=True)
+        db.session.add(att)
+        db.session.commit()
+        return group, member, event, att
+
+    # --- access control ---
+
+    def test_purge_page_requires_superuser(self):
+        self._login_as_plain()
+        resp = self.client.get("/admin/purge")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_purge_page_requires_auth(self):
+        resp = self.client.get("/admin/purge")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_purge_page_loads_for_superuser(self):
+        self._login_as_superuser()
+        resp = self.client.get("/admin/purge")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"System Purge", resp.data)
+
+    # --- confirmation validation ---
+
+    def test_purge_attendance_wrong_confirm_redirects_with_error(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/attendance", data={"confirm": "yes"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.attendance import Attendance
+        count = db.session.query(Attendance).count()
+        self.assertEqual(count, 1)  # not deleted
+
+    # --- purge attendance ---
+
+    def test_purge_attendance_deletes_all_records(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.attendance import Attendance
+        self.assertEqual(db.session.query(Attendance).count(), 0)
+
+    def test_purge_attendance_preserves_members_and_events(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        from app.models.member import Member
+        from app.models.event import Event
+        self.assertGreater(db.session.query(Member).count(), 0)
+        self.assertGreater(db.session.query(Event).count(), 0)
+
+    # --- purge members ---
+
+    def test_purge_members_deletes_all_members(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.member import Member
+        self.assertEqual(db.session.query(Member).count(), 0)
+
+    def test_purge_members_also_deletes_attendance(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        from app.models.attendance import Attendance
+        self.assertEqual(db.session.query(Attendance).count(), 0)
+
+    def test_purge_members_preserves_groups_and_events(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        from app.models.group import Group
+        from app.models.event import Event
+        self.assertGreater(db.session.query(Group).count(), 0)
+        self.assertGreater(db.session.query(Event).count(), 0)
+
+    # --- purge groups ---
+
+    def test_purge_groups_deletes_custom_groups(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/groups", data={"confirm": "PURGE"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.group import Group
+        from app.models.membership import DEFAULT_GROUP_NAME
+        custom = db.session.query(Group).filter(Group.name != DEFAULT_GROUP_NAME).count()
+        self.assertEqual(custom, 0)
+
+    def test_purge_groups_preserves_all_members_group(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/groups", data={"confirm": "PURGE"})
+        from app.models.group import Group
+        from app.models.membership import DEFAULT_GROUP_NAME
+        default = db.session.query(Group).filter(Group.name == DEFAULT_GROUP_NAME).first()
+        self.assertIsNotNone(default)
+
+    def test_purge_groups_also_deletes_events_and_attendance(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/groups", data={"confirm": "PURGE"})
+        from app.models.event import Event
+        from app.models.attendance import Attendance
+        self.assertEqual(db.session.query(Event).count(), 0)
+        self.assertEqual(db.session.query(Attendance).count(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

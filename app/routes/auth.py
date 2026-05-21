@@ -2,8 +2,14 @@ from functools import wraps
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy import text
 
 from ..extensions import db
+from ..models.attendance import Attendance
+from ..models.event import Event
+from ..models.group import Group
+from ..models.member import Member
+from ..models.membership import DEFAULT_GROUP_NAME, member_groups
 from ..models.user import User
 
 bp = Blueprint("auth", __name__)
@@ -193,3 +199,79 @@ def dashboard():
 def logout():
     logout_user()
     return redirect(url_for("auth.login"))
+
+
+# ---------------------------------------------------------------------------
+# System Purge (superuser only)
+# ---------------------------------------------------------------------------
+
+@bp.get("/admin/purge")
+@superuser_required
+def purge_page():
+    return render_template("auth/purge.html")
+
+
+@bp.post("/admin/purge/attendance")
+@superuser_required
+def purge_attendance():
+    if request.form.get("confirm", "").strip().upper() != "PURGE":
+        flash("Type PURGE to confirm.", "error")
+        return redirect(url_for("auth.purge_page"))
+    count = db.session.query(Attendance).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"All attendance records deleted ({count} record{'s' if count != 1 else ''} removed).", "success")
+    return redirect(url_for("auth.purge_page"))
+
+
+@bp.post("/admin/purge/members")
+@superuser_required
+def purge_members():
+    if request.form.get("confirm", "").strip().upper() != "PURGE":
+        flash("Type PURGE to confirm.", "error")
+        return redirect(url_for("auth.purge_page"))
+    # Delete in FK order: attendance → member_groups junction → members
+    db.session.query(Attendance).delete(synchronize_session=False)
+    db.session.execute(text("DELETE FROM member_groups"))
+    count = db.session.query(Member).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"All members deleted ({count} member{'s' if count != 1 else ''} removed).", "success")
+    return redirect(url_for("auth.purge_page"))
+
+
+@bp.post("/admin/purge/groups")
+@superuser_required
+def purge_groups():
+    if request.form.get("confirm", "").strip().upper() != "PURGE":
+        flash("Type PURGE to confirm.", "error")
+        return redirect(url_for("auth.purge_page"))
+    # Collect non-default group IDs
+    non_default_ids = db.session.execute(
+        db.select(Group.id).where(Group.name != DEFAULT_GROUP_NAME)
+    ).scalars().all()
+
+    if non_default_ids:
+        # Cascade manually: attendance for events → events → member_groups → groups
+        event_ids = db.session.execute(
+            db.select(Event.id).where(Event.group_id.in_(non_default_ids))
+        ).scalars().all()
+        if event_ids:
+            db.session.query(Attendance).filter(
+                Attendance.event_id.in_(event_ids)
+            ).delete(synchronize_session=False)
+        db.session.query(Event).filter(
+            Event.group_id.in_(non_default_ids)
+        ).delete(synchronize_session=False)
+        db.session.execute(
+            member_groups.delete().where(member_groups.c.group_id.in_(non_default_ids))
+        )
+        db.session.query(Member).filter(
+            Member.group_id.in_(non_default_ids)
+        ).update({"group_id": None}, synchronize_session=False)
+        db.session.query(Group).filter(
+            Group.id.in_(non_default_ids)
+        ).delete(synchronize_session=False)
+        db.session.commit()
+
+    n = len(non_default_ids)
+    flash(f"All custom groups deleted ({n} group{'s' if n != 1 else ''} removed; ALL MEMBERS preserved).", "success")
+    return redirect(url_for("auth.purge_page"))
