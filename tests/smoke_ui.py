@@ -686,6 +686,21 @@ class TestAttendanceUI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Alice", resp.data)
 
+    def test_attendance_page_has_counter_ids(self):
+        """Attendance page includes expected-count, present-count, absent-count element IDs."""
+        resp = self.client.get(f"/events/{self.event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'id="expected-count"', resp.data)
+        self.assertIn(b'id="present-count"', resp.data)
+        self.assertIn(b'id="absent-count"', resp.data)
+
+    def test_attendance_page_has_member_row_data_attributes(self):
+        """Attendance page member rows have data-member-id and data-attendance-status attributes."""
+        resp = self.client.get(f"/events/{self.event.id}/attendance")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'data-member-id=', resp.data)
+        self.assertIn(b'data-attendance-status', resp.data)
+
 
 # ---------------------------------------------------------------------------
 # Reports UI

@@ -68,15 +68,15 @@ class AttendanceService:
         ]
         expected_member_ids = {m.id for m in expected_members}
 
-        present_member_ids = set(
-            db.session.execute(
-                db.select(Attendance.member_id).where(
-                    Attendance.event_id == event_id,
-                    Attendance.present.is_(True),
-                    Attendance.member_id.in_(expected_member_ids),
-                )
-            ).scalars().all()
-        )
+        present_records = db.session.execute(
+            db.select(Attendance).where(
+                Attendance.event_id == event_id,
+                Attendance.present.is_(True),
+                Attendance.member_id.in_(expected_member_ids),
+            )
+        ).scalars().all()
+        present_attendance_by_member = {r.member_id: r for r in present_records}
+        present_member_ids = set(present_attendance_by_member.keys())
 
         present_members = [m for m in expected_members if m.id in present_member_ids]
         absent_members = [m for m in expected_members if m.id not in present_member_ids]
@@ -89,7 +89,10 @@ class AttendanceService:
             "present_count": len(present_members),
             "absent_count": len(absent_members),
             "expected_members": [{"id": m.id, "name": m.name} for m in expected_members],
-            "present_members": [{"id": m.id, "name": m.name} for m in present_members],
+            "present_members": [
+                {"id": m.id, "name": m.name, "attendance_id": present_attendance_by_member[m.id].id}
+                for m in present_members
+            ],
             "absent_members": [{"id": m.id, "name": m.name} for m in absent_members],
         }, None
 

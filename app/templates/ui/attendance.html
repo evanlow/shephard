@@ -30,7 +30,8 @@
         <span class="badge bg-danger">Absent</span>
         <strong id="absent-count">{{ absent_count }}</strong>
       </div>
-      <div class="ms-auto">
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <small id="auto-refresh-status" class="text-muted"></small>
         <a href="{{ url_for('ui.attendance_pdf', event_id=event.id) }}"
            class="btn btn-outline-secondary btn-sm">&#128196; Export PDF</a>
       </div>
@@ -77,7 +78,7 @@
             data-present="{{ 'true' if ms.present else 'false' }}">
           <td class="member-name align-middle fw-semibold">{{ ms.member.name }}</td>
           <td class="align-middle">
-            <span class="badge status-badge {{ 'bg-success' if ms.present else 'bg-secondary' }}">
+            <span class="badge status-badge {{ 'bg-success' if ms.present else 'bg-secondary' }}" data-attendance-status>
               {{ 'Present' if ms.present else 'Absent' }}
             </span>
           </td>
@@ -302,5 +303,97 @@
       if (e.key === 'Enter') quickAddBtn.click();
     });
   }
+
+  // --- Near-real-time polling ---
+  let lastSnapshot = null;
+
+  async function refreshAttendanceStatus() {
+    if (document.hidden) return;
+
+    let response;
+    try {
+      response = await fetch(`/api/attendance/event/${EVENT_ID}/status`, {
+        headers: { "Accept": "application/json" }
+      });
+    } catch (e) {
+      return;
+    }
+
+    if (!response.ok) return;
+
+    const status = await response.json();
+
+    // If expected member set changed (walk-in added by another admin), reload
+    const domMemberIds = new Set(
+      Array.from(document.querySelectorAll("[data-member-id]")).map(r => Number(r.dataset.memberId))
+    );
+    const apiMemberIds = new Set(status.expected_members.map(m => m.id));
+    if (
+      apiMemberIds.size !== domMemberIds.size ||
+      [...apiMemberIds].some(id => !domMemberIds.has(id))
+    ) {
+      window.location.reload();
+      return;
+    }
+
+    const snapshot = JSON.stringify({
+      present: status.present_members.map(m => m.id).sort(),
+      absent: status.absent_members.map(m => m.id).sort()
+    });
+
+    updateLastChecked();
+    if (snapshot === lastSnapshot) return;
+    lastSnapshot = snapshot;
+
+    document.getElementById("expected-count").textContent = status.expected_count;
+    document.getElementById("present-count").textContent = status.present_count;
+    document.getElementById("absent-count").textContent = status.absent_count;
+
+    const presentMap = {};
+    status.present_members.forEach(m => { presentMap[m.id] = m; });
+
+    document.querySelectorAll("[data-member-id]").forEach(row => {
+      const memberId = Number(row.dataset.memberId);
+      const isPresent = memberId in presentMap;
+      const currentPresent = row.dataset.present === 'true';
+      if (isPresent === currentPresent) return;
+
+      row.dataset.present = isPresent ? 'true' : 'false';
+      if (isPresent && presentMap[memberId].attendance_id) {
+        row.dataset.attendanceId = presentMap[memberId].attendance_id;
+      }
+
+      const badge = row.querySelector('[data-attendance-status]');
+      if (badge) {
+        badge.className = `badge status-badge ${isPresent ? 'bg-success' : 'bg-secondary'}`;
+        badge.textContent = isPresent ? 'Present' : 'Absent';
+      }
+
+      const markBtn = row.querySelector('.mark-btn');
+      const unmarkBtn = row.querySelector('.unmark-btn');
+      if (markBtn) {
+        markBtn.disabled = isPresent;
+        markBtn.classList.toggle('disabled', isPresent);
+      }
+      if (unmarkBtn) {
+        unmarkBtn.disabled = !isPresent;
+        unmarkBtn.classList.toggle('disabled', !isPresent);
+      }
+    });
+
+    applyFilter();
+  }
+
+  function updateLastChecked() {
+    const el = document.getElementById('auto-refresh-status');
+    if (el) {
+      const now = new Date();
+      el.textContent = `Last checked: ${now.toLocaleTimeString()}`;
+    }
+  }
+
+  setInterval(refreshAttendanceStatus, 5000);
+  document.addEventListener("visibilitychange", refreshAttendanceStatus);
+  refreshAttendanceStatus();
 </script>
 {% endblock %}
