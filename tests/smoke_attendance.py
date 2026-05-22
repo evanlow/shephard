@@ -211,6 +211,18 @@ class TestAttendanceCRUD(unittest.TestCase):
         self.assertEqual(data["present_count"], 1)
         self.assertEqual(data["absent_count"], 1)
 
+    def test_event_status_present_members_include_attendance_id(self):
+        create_resp = self._record(member_id=self.member_id, present=True)
+        attendance_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.get(f"/api/attendance/event/{self.event_id}/status")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(len(data["present_members"]), 1)
+        member_entry = data["present_members"][0]
+        self.assertIn("attendance_id", member_entry)
+        self.assertEqual(member_entry["attendance_id"], attendance_id)
+
     def test_record_blocked_for_archived_event_returns_400(self):
         self.client.post(f"/api/events/{self.event_id}/archive")
         resp = self._record()
