@@ -12,6 +12,7 @@ from ..models.membership import member_groups
 class AttendanceService:
     @staticmethod
     def get_all(event_id: int | None = None, member_id: int | None = None) -> list[Attendance]:
+        """Return all attendance records, optionally filtered by event and/or member."""
         stmt = db.select(Attendance)
         if event_id is not None:
             stmt = stmt.where(Attendance.event_id == event_id)
@@ -21,6 +22,12 @@ class AttendanceService:
 
     @staticmethod
     def record(event_id: int, member_id: int, present: bool, marked_by: int | None = None) -> tuple[Attendance | None, str | None]:
+        """Create a new attendance record.
+
+        Returns (record, None) on success or (None, error_message) on failure.
+        Fails if the event or member does not exist, if the member is not in the
+        event's group, if the event is archived, or if a record already exists.
+        """
         event = db.session.get(Event, event_id)
         if not event:
             return None, f"Event {event_id} not found"
@@ -43,6 +50,13 @@ class AttendanceService:
 
     @staticmethod
     def get_event_status(event_id: int) -> tuple[dict | None, str | None]:
+        """Return expected/present/absent breakdown for an event.
+
+        Only members who joined the event's group on or before the event date
+        and were not deactivated on or before that date are counted as expected
+        attendees. Returns (status_dict, None) on success or
+        (None, error_message) if the event does not exist.
+        """
         event = db.session.get(Event, event_id)
         if not event:
             return None, f"Event {event_id} not found"
@@ -98,6 +112,11 @@ class AttendanceService:
 
     @staticmethod
     def update(attendance_id: int, present: bool) -> tuple[Attendance | None, str | None]:
+        """Update the present flag on an existing attendance record.
+
+        Returns (record, None) on success or (None, error_message) on failure.
+        Fails if the record does not exist or its event is archived.
+        """
         record = db.session.get(Attendance, attendance_id)
         if not record:
             return None, "Attendance record not found"
@@ -110,6 +129,11 @@ class AttendanceService:
 
     @staticmethod
     def delete(attendance_id: int) -> tuple[bool, str | None]:
+        """Delete an attendance record.
+
+        Returns (True, None) on success or (False, error_message) on failure.
+        Fails if the record does not exist or its event is archived.
+        """
         record = db.session.get(Attendance, attendance_id)
         if not record:
             return False, "Attendance record not found"

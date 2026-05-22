@@ -666,6 +666,17 @@ class TestAttendanceUI(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_quick_add_invalid_event_returns_404(self):
+        """Quick-add for a non-existent event returns 404."""
+        import json
+
+        resp = self.client.post(
+            "/events/9999/attendance/quick_add",
+            data=json.dumps({"name": "Anyone"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+
     def test_deactivated_member_excluded_from_future_event(self):
         """A member deactivated before the event date is not listed on the attendance page."""
         from datetime import datetime as dt
@@ -695,7 +706,7 @@ class TestAttendanceUI(unittest.TestCase):
         self.assertIn(b'id="absent-count"', resp.data)
 
     def test_attendance_page_has_member_row_data_attributes(self):
-        """Attendance page member rows have data-member-id and data-attendance-status attributes."""
+        """Attendance page member rows have data-member-id, data-present, and data-attendance-status attributes."""
         from html.parser import HTMLParser
 
         class AttendanceStatusParser(HTMLParser):
@@ -710,6 +721,7 @@ class TestAttendanceUI(unittest.TestCase):
         resp = self.client.get(f"/events/{self.event.id}/attendance")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b'data-member-id=', resp.data)
+        self.assertIn(b'data-present=', resp.data)
         parser = AttendanceStatusParser()
         parser.feed(resp.get_data(as_text=True))
         self.assertTrue(parser.has_attendance_status)
