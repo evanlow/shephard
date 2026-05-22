@@ -572,7 +572,9 @@ def _import_workbook(wb):
             num_val     = ws_ev.cell(row=r, column=1).value
             name_val    = ws_ev.cell(row=r, column=2).value
             present_val = ws_ev.cell(row=r, column=3).value
-            if not isinstance(num_val, int):
+            # Accept int or float (Google Sheets / Excel round-trips convert ints to floats)
+            is_row_index = isinstance(num_val, (int, float)) and not isinstance(num_val, bool)
+            if not is_row_index:
                 break   # blank row or summary section
             if not name_val:
                 continue

@@ -212,3 +212,40 @@ Next steps:
 - Manual UI smoke test of new "Clear All Events" purge card (Principle 5)
 - Manual UI smoke test of attendance page enhancements from prior session (Principle 5)
 ---
+
+## 2026-05-23 — Bugfix: Restore Imports 0 Attendance after Google Sheets Round-Trip
+
+---
+Date: 2026-05-23
+Session ID: fix-restore-attendance-float-row-index
+Checkpoint type: implementation
+Trigger: User reported "0 attendance records imported" during admin restore even though
+         backup spreadsheet contained attendance data.
+
+KPI: 8/8 green
+- Green: #1, #2, #3 (pre-change: 323/323), #4 (post-change: 324/324, 0 warnings),
+         #5, #6, #7, #8
+- Yellow: none
+- Red: none
+
+KPI delta: Test count 323 -> 324 (+1 regression test; all pass).
+
+Root cause:
+- app/routes/auth.py restore loop used isinstance(num_val, int) at column A to detect
+  attendance rows. When the backup xlsx is opened/re-saved by Google Sheets or Excel,
+  integer cells come back as floats, so the guard failed on row 7 and the loop exited
+  before importing any attendance.
+
+Actions completed:
+- Fixed: accept (int, float) excluding bool as a valid row index
+- Added regression test: test_restore_imports_attendance_when_row_index_is_float
+  (rewrites column A of every event sheet as float, then asserts restore still works)
+- Post-change regression: 324/324 passed, 0 warnings [PASS]
+
+Risks / blockers / corrective actions:
+- none
+
+Next steps:
+- Commit on feature branch and push
+- Manual UI smoke test by re-uploading a Google Sheets-roundtripped backup file
+---

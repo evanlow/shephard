@@ -742,6 +742,37 @@ class TestRestore(unittest.TestCase):
                          data=data, content_type="multipart/form-data")
         self.assertGreater(db.session.query(Attendance).count(), 0)
 
+    def test_restore_imports_attendance_when_row_index_is_float(self):
+        """Google Sheets / Excel round-trips convert integer cells to floats;
+        restore must still import attendance rows."""
+        from openpyxl import load_workbook
+        from app.models.attendance import Attendance
+        self._login_as_superuser()
+        xlsx_bytes = self._seed_and_export()
+
+        # Simulate the Google Sheets round-trip: rewrite the row-index column
+        # in every event sheet as a float (1 -> 1.0).
+        wb = load_workbook(io.BytesIO(xlsx_bytes))
+        for sheet_name in wb.sheetnames[1:]:
+            ws = wb[sheet_name]
+            for r in range(7, ws.max_row + 1):
+                v = ws.cell(row=r, column=1).value
+                if isinstance(v, int) and not isinstance(v, bool):
+                    ws.cell(row=r, column=1).value = float(v)
+        buf = io.BytesIO()
+        wb.save(buf)
+        floatified = buf.getvalue()
+
+        self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/groups", data={"confirm": "PURGE"})
+        self.assertEqual(db.session.query(Attendance).count(), 0)
+
+        data = {"backup": (io.BytesIO(floatified), "export.xlsx")}
+        self.client.post("/admin/restore",
+                         data=data, content_type="multipart/form-data")
+        self.assertGreater(db.session.query(Attendance).count(), 0)
+
     def test_restore_member_is_in_all_members_group(self):
         """Restored members are enrolled in ALL MEMBERS."""
         from app.models.member import Member
