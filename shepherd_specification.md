@@ -634,27 +634,37 @@ This would require a `member_groups` association table.
 
 Attendance taking during service should be fast.
 
-Possible improvements:
+Implemented:
 
 - Search-as-you-type member list.
-- Large Present button.
-- Undo button.
-- Auto-save.
-- Mobile-friendly layout.
-- Recently marked list.
+- Present / Undo buttons with AJAX (no page reload).
+- Live counters (expected, present, absent) updated in real time.
 - Filter by expected, present, absent.
+- Mobile-friendly layout.
+- Walk-in quick-add: create a new member and mark them present in one step directly
+  from the attendance page. The member's `joined_at` is back-dated to the event date
+  so the eligibility filter includes them for that event.
+
+Not yet implemented:
+
+- Recently marked list.
 
 ### 16.3 Real-Time Updates
 
 Multiple admins may mark attendance concurrently.
 
-Possible approaches:
+Implemented:
 
-- Short polling.
-- Auto-refresh every few seconds.
+- Short polling every 5 seconds against `GET /api/attendance/event/{id}/status`.
+- Counters and row states updated without a page reload when another admin changes
+  attendance.
+- Full page reload triggered automatically if a walk-in (new member) is detected in
+  the polling response.
+- Last-checked timestamp shown in the page header.
+
+Not yet implemented:
+
 - WebSocket updates using Flask-SocketIO.
-
-MVP can start with manual refresh or polling before implementing WebSockets.
 
 ### 16.4 Reports and Exports
 

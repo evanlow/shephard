@@ -224,6 +224,28 @@ class TestAttendanceService(unittest.TestCase):
         self.assertIsNone(error)
         self.assertIsNotNone(record)
 
+    def test_get_event_status_excludes_member_deactivated_before_event(self):
+        """A member deactivated before the event date must not appear in the report."""
+        member = db.session.get(Member, self.member_id)
+        member.deactivated_at = datetime(2026, 5, 31, 23, 59, 59)
+        db.session.commit()
+
+        status, error = AttendanceService.get_event_status(self.event_id)
+        self.assertIsNone(error)
+        member_ids = [m["id"] for m in status["expected_members"]]
+        self.assertNotIn(self.member_id, member_ids)
+
+    def test_get_event_status_includes_member_deactivated_after_event(self):
+        """A member deactivated after the event date must still appear in the report."""
+        member = db.session.get(Member, self.member_id)
+        member.deactivated_at = datetime(2026, 6, 2, 0, 0, 0)
+        db.session.commit()
+
+        status, error = AttendanceService.get_event_status(self.event_id)
+        self.assertIsNone(error)
+        member_ids = [m["id"] for m in status["expected_members"]]
+        self.assertIn(self.member_id, member_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
