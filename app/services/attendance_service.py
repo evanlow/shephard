@@ -53,7 +53,7 @@ class AttendanceService:
         """Return expected/present/absent breakdown for an event.
 
         Only members who joined the event's group on or before the event date
-        and were not deactivated before that date are counted as expected
+        and were not deactivated on or before that date are counted as expected
         attendees. Returns (status_dict, None) on success or
         (None, error_message) if the event does not exist.
         """

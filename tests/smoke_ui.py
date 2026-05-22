@@ -706,7 +706,7 @@ class TestAttendanceUI(unittest.TestCase):
         self.assertIn(b'id="absent-count"', resp.data)
 
     def test_attendance_page_has_member_row_data_attributes(self):
-        """Attendance page member rows have data-member-id and data-attendance-status attributes."""
+        """Attendance page member rows have data-member-id, data-present, and data-attendance-status attributes."""
         from html.parser import HTMLParser
 
         class AttendanceStatusParser(HTMLParser):
