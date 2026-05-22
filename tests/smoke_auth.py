@@ -374,7 +374,7 @@ class TestSystemPurge(unittest.TestCase):
         self.assertGreater(db.session.query(Group).count(), 0)
         self.assertGreater(db.session.query(Event).count(), 0)
 
-    # --- purge groups ---
+    # --- purge events ---
 
     def test_purge_events_deletes_all_events(self):
         self._login_as_superuser()
