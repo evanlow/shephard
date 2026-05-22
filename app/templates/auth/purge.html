@@ -106,6 +106,21 @@
       </form>
     </div>
 
+    <!-- Purge Events -->
+    <div class="purge-card">
+      <h2>Clear All Events</h2>
+      <p>Deletes every event and all linked attendance records. Members and groups are untouched.</p>
+      <form method="post" action="{{ url_for('auth.purge_events') }}" onsubmit="return checkConfirm(this)">
+        <label for="conf-events">Type PURGE to confirm</label>
+        <input type="text" id="conf-events" name="confirm"
+               placeholder="PURGE" autocomplete="off"
+               oninput="toggleBtn(this)" />
+        <button type="submit" class="btn btn-danger" id="btn-events" disabled>
+          Delete All Events
+        </button>
+      </form>
+    </div>
+
     <!-- Purge Groups -->
     <div class="purge-card">
       <h2>Clear All Groups</h2>

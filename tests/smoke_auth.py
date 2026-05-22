@@ -374,7 +374,41 @@ class TestSystemPurge(unittest.TestCase):
         self.assertGreater(db.session.query(Group).count(), 0)
         self.assertGreater(db.session.query(Event).count(), 0)
 
-    # --- purge groups ---
+    # --- purge events ---
+
+    def test_purge_events_deletes_all_events(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/events", data={"confirm": "PURGE"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.event import Event
+        self.assertEqual(db.session.query(Event).count(), 0)
+
+    def test_purge_events_also_deletes_attendance(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/events", data={"confirm": "PURGE"})
+        from app.models.attendance import Attendance
+        self.assertEqual(db.session.query(Attendance).count(), 0)
+
+    def test_purge_events_preserves_members_and_groups(self):
+        self._login_as_superuser()
+        self._seed()
+        self.client.post("/admin/purge/events", data={"confirm": "PURGE"})
+        from app.models.member import Member
+        from app.models.group import Group
+        self.assertGreater(db.session.query(Member).count(), 0)
+        self.assertGreater(db.session.query(Group).count(), 0)
+
+    def test_purge_events_wrong_confirm_redirects_with_error(self):
+        self._login_as_superuser()
+        self._seed()
+        resp = self.client.post("/admin/purge/events", data={"confirm": "yes"})
+        self.assertEqual(resp.status_code, 302)
+        from app.models.event import Event
+        self.assertGreater(db.session.query(Event).count(), 0)
+
+    # --- purge groups (original) ---
 
     def test_purge_groups_deletes_custom_groups(self):
         self._login_as_superuser()
