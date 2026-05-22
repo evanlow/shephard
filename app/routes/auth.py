@@ -248,6 +248,20 @@ def purge_members():
     return redirect(url_for("auth.purge_page"))
 
 
+@bp.post("/admin/purge/events")
+@superuser_required
+def purge_events():
+    if request.form.get("confirm", "").strip().upper() != "PURGE":
+        flash("Type PURGE to confirm.", "error")
+        return redirect(url_for("auth.purge_page"))
+    # Delete in FK order: attendance → events
+    db.session.query(Attendance).delete(synchronize_session=False)
+    count = db.session.query(Event).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"All events deleted ({count} event{'s' if count != 1 else ''} removed).", "success")
+    return redirect(url_for("auth.purge_page"))
+
+
 @bp.post("/admin/purge/groups")
 @superuser_required
 def purge_groups():
