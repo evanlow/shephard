@@ -84,9 +84,9 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 | Field | Detail |
 |---|---|
 | **Role** | Admin or Superuser |
-| **Preconditions** | User is logged in; at least one member, one group, and one upcoming event exist |
+| **Preconditions** | User is logged in; at least one member, one group, and one event exist |
 | **Steps** | 1. Navigate to `/dashboard`. |
-| **Expected Result** | Dashboard displays the total number of members, total number of groups, and upcoming events. |
+| **Expected Result** | Dashboard displays the total number of members, total number of groups, total events, and a recent events table. |
 
 ---
 
@@ -109,19 +109,19 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 |---|---|
 | **Role** | Admin or Superuser |
 | **Preconditions** | User is logged in |
-| **Steps** | 1. Navigate to `/members`. <br>2. In the **Add Member** form, enter a member name. <br>3. Leave the group field blank. <br>4. Click **Add Member**. |
+| **Steps** | 1. Navigate to `/members`. <br>2. In the **Add Member** form, enter a member name. <br>3. Leave **Additional Groups** unselected. <br>4. Click **Add Member**. |
 | **Expected Result** | Member is created and appears in the members list. The member is automatically enrolled in the **ALL MEMBERS** group. No additional group is assigned. |
 
 ---
 
-### UAT-MEM-002: Add a new member with a group assignment
+### UAT-MEM-002: Add a new member with additional group assignment
 
 | Field | Detail |
 |---|---|
 | **Role** | Admin or Superuser |
 | **Preconditions** | User is logged in; at least one group (other than ALL MEMBERS) exists |
-| **Steps** | 1. Navigate to `/members`. <br>2. Enter a member name and select a group. <br>3. Click **Add Member**. |
-| **Expected Result** | Member is created, enrolled in ALL MEMBERS, and also enrolled in the selected group. The member appears in the group's member list. |
+| **Steps** | 1. Navigate to `/members`. <br>2. Enter a member name and select one or more options in **Additional Groups**. <br>3. Click **Add Member**. |
+| **Expected Result** | Member is created, enrolled in **ALL MEMBERS**, and also enrolled in each selected additional group. The member appears in those groups' member lists. |
 
 ---
 
@@ -333,8 +333,8 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 |---|---|
 | **Role** | Admin or Superuser |
 | **Preconditions** | User is logged in; an archived event exists |
-| **Steps** | 1. Attempt to edit an archived event via its edit URL. |
-| **Expected Result** | The edit action is blocked. An error is shown indicating that archived events cannot be edited. |
+| **Steps** | 1. Open `/events/<id>/edit` for an archived event. <br>2. Attempt to submit a change. |
+| **Expected Result** | The edit page renders, but submitting changes is blocked. An error is shown indicating that archived events cannot be edited. |
 
 ---
 
@@ -467,8 +467,8 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 |---|---|
 | **Role** | Admin or Superuser |
 | **Preconditions** | An archived event exists |
-| **Steps** | 1. Attempt to navigate to the attendance page for the archived event. <br>2. Attempt to mark a member present via the API for the archived event. |
-| **Expected Result** | Both attempts are blocked. The UI does not allow attendance changes for archived events. The API returns an error for any attendance write operation against an archived event. |
+| **Steps** | 1. Navigate to the attendance page for the archived event. <br>2. Attempt to mark a member present via the UI or API for the archived event. |
+| **Expected Result** | The attendance page can be viewed, but attendance changes are blocked for archived events. The API returns an error for attendance write operations against an archived event. |
 
 ---
 
@@ -536,7 +536,7 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 | **Role** | Admin or Superuser |
 | **Preconditions** | An event exists with members marked present and some absent |
 | **Steps** | 1. Send `GET /api/attendance/event/<id>/status`. |
-| **Expected Result** | The JSON response includes: `event_id`, `event_name`, `group_id`, `expected` (list of expected members), `present` (list of present members), `absent` (list of absent members), `expected_count`, `present_count`, and `absent_count`. All counts are accurate. |
+| **Expected Result** | The JSON response includes: `event_id`, `event_name`, `group_id`, `expected_members` (list of expected members), `present_members` (list of present members, including `attendance_id`), `absent_members` (list of absent members), `expected_count`, `present_count`, and `absent_count`. All counts are accurate. |
 
 ---
 
@@ -604,7 +604,7 @@ Test cases are grouped by functional area. Role requirements (Admin or Superuser
 | **Role** | Superuser |
 | **Preconditions** | User is logged in as Superuser; a non-Superuser admin account exists |
 | **Steps** | 1. Navigate to `/admin/users`. <br>2. Click **Toggle Admin** next to a regular Admin user. |
-| **Expected Result** | The admin's access is toggled. If previously active, the account is disabled and the user can no longer log in. If previously disabled, the account is re-enabled. |
+| **Expected Result** | The admin's `is_admin` access flag is toggled. If revoked, the user can still log in with valid credentials but is blocked from admin-only routes. If granted, the user regains access to admin routes. |
 
 ---
 
