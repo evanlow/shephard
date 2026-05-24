@@ -131,3 +131,9 @@ Expected output: `123 passed, 0 failed` across 9 smoke test files.
 - [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) — server setup, database, PostgreSQL migration, environment variables, and URL reference
 - [ADMIN_ROLE_GUIDE.md](ADMIN_ROLE_GUIDE.md) — day-to-day usage guide for Admin-role users
 - [SUPERUSERS_GUIDE.md](SUPERUSERS_GUIDE.md) — full feature reference for Superusers (includes all Admin capabilities plus delete, archive, and user management)
+
+---
+
+## License
+
+Shepherd is released under the [MIT License](LICENSE). It is free to use, modify, and deploy by anyone, including churches and organisations.
