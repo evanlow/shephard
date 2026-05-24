@@ -136,4 +136,4 @@ Expected output: `123 passed, 0 failed` across 9 smoke test files.
 
 ## License
 
-Shepherd is released under the [MIT License](LICENSE). It is free to use, modify, and deploy by any church or organisation.
+Shepherd is released under the [MIT License](LICENSE). It is free to use, modify, and deploy by anyone, including churches and organisations.
