@@ -253,6 +253,130 @@ class TestUserManagement(unittest.TestCase):
         self.assertIsNotNone(still_there)
 
 
+class TestSetUserPassword(unittest.TestCase):
+    def setUp(self):
+        self.app = _make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        self.superuser = _create_user("su", "su@test.com", "password123", is_superuser=True)
+        self.target = _create_user("target", "target@test.com", "oldpassword", is_superuser=False)
+        self.plain_admin = _create_user("plain", "plain@test.com", "password123", is_superuser=False)
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def _login_as_superuser(self):
+        self.client.post("/login", data={"username": "su", "password": "password123"})
+
+    def _login_as_plain(self):
+        self.client.post("/login", data={"username": "plain", "password": "password123"})
+
+    def test_password_form_loads_for_superuser(self):
+        self._login_as_superuser()
+        resp = self.client.get(f"/admin/users/{self.target.id}/password")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Set Password", resp.data)
+
+    def test_password_form_blocked_for_non_superuser(self):
+        self._login_as_plain()
+        resp = self.client.get(f"/admin/users/{self.target.id}/password")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_password_form_blocked_for_unauthenticated(self):
+        resp = self.client.get(f"/admin/users/{self.target.id}/password")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+
+    def test_set_password_success(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(self.target)
+        self.assertTrue(self.target.check_password("newpassword1"))
+
+    def test_old_password_no_longer_works_after_reset(self):
+        self._login_as_superuser()
+        self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+        )
+        db.session.refresh(self.target)
+        self.assertFalse(self.target.check_password("oldpassword"))
+
+    def test_new_password_works_after_reset(self):
+        self._login_as_superuser()
+        self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+        )
+        # Log out and log back in with new password
+        self.client.post("/logout")
+        resp = self.client.post(
+            "/login",
+            data={"username": "target", "password": "newpassword1"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_password_mismatch_returns_400(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "different123"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_short_password_returns_400(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "short", "confirm_password": "short"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_post_blocked_for_non_superuser(self):
+        self._login_as_plain()
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_post_blocked_for_unauthenticated(self):
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+
+    def test_cannot_set_own_password_via_this_route(self):
+        self._login_as_superuser()
+        su_id = self.superuser.id
+        resp = self.client.get(
+            f"/admin/users/{su_id}/password", follow_redirects=False
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_cannot_post_own_password_via_this_route(self):
+        self._login_as_superuser()
+        su_id = self.superuser.id
+        resp = self.client.post(
+            f"/admin/users/{su_id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+
+
 # ---------------------------------------------------------------------------
 # System Purge
 # ---------------------------------------------------------------------------

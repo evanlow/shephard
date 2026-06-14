@@ -149,6 +149,55 @@ def delete_user(user_id: int):
     return redirect(url_for("auth.list_users"))
 
 
+@bp.get("/admin/users/<int:user_id>/password")
+@superuser_required
+def user_password_form(user_id: int):
+    if user_id == current_user.id:
+        flash("Use a separate change-password function to update your own password.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    return render_template("auth/user_password_form.html", target_user=user)
+
+
+@bp.post("/admin/users/<int:user_id>/password")
+@superuser_required
+def set_user_password(user_id: int):
+    if user_id == current_user.id:
+        flash("Use a separate change-password function to update your own password.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    errors = []
+    if not password:
+        errors.append("Password is required.")
+    elif len(password) < 8:
+        errors.append("Password must be at least 8 characters.")
+    elif password != confirm:
+        errors.append("Passwords do not match.")
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+        return render_template("auth/user_password_form.html", target_user=user), 400
+
+    user.set_password(password)
+    db.session.commit()
+    flash(f"Password updated for '{user.username}'.", "success")
+    return redirect(url_for("auth.list_users"))
+
+
 @bp.get("/login")
 def login():
     if current_user.is_authenticated:
