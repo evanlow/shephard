@@ -275,11 +275,18 @@ class TestSetUserPassword(unittest.TestCase):
     def _login_as_plain(self):
         self.client.post("/login", data={"username": "plain", "password": "password123"})
 
+    def _get_password_form_csrf_token(self):
+        resp = self.client.get(f"/admin/users/{self.target.id}/password")
+        self.assertEqual(resp.status_code, 200)
+        with self.client.session_transaction() as session:
+            return session["set_user_password_csrf_token"]
+
     def test_password_form_loads_for_superuser(self):
         self._login_as_superuser()
         resp = self.client.get(f"/admin/users/{self.target.id}/password")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Set Password", resp.data)
+        self.assertIn(b'name="csrf_token"', resp.data)
 
     def test_password_form_blocked_for_non_superuser(self):
         self._login_as_plain()
@@ -293,9 +300,14 @@ class TestSetUserPassword(unittest.TestCase):
 
     def test_set_password_success(self):
         self._login_as_superuser()
+        csrf_token = self._get_password_form_csrf_token()
         resp = self.client.post(
             f"/admin/users/{self.target.id}/password",
-            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            data={
+                "csrf_token": csrf_token,
+                "password": "newpassword1",
+                "confirm_password": "newpassword1",
+            },
             follow_redirects=False,
         )
         self.assertEqual(resp.status_code, 302)
@@ -304,18 +316,28 @@ class TestSetUserPassword(unittest.TestCase):
 
     def test_old_password_no_longer_works_after_reset(self):
         self._login_as_superuser()
+        csrf_token = self._get_password_form_csrf_token()
         self.client.post(
             f"/admin/users/{self.target.id}/password",
-            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            data={
+                "csrf_token": csrf_token,
+                "password": "newpassword1",
+                "confirm_password": "newpassword1",
+            },
         )
         db.session.refresh(self.target)
         self.assertFalse(self.target.check_password("oldpassword"))
 
     def test_new_password_works_after_reset(self):
         self._login_as_superuser()
+        csrf_token = self._get_password_form_csrf_token()
         self.client.post(
             f"/admin/users/{self.target.id}/password",
-            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            data={
+                "csrf_token": csrf_token,
+                "password": "newpassword1",
+                "confirm_password": "newpassword1",
+            },
         )
         # Log out and log back in with new password
         self.client.post("/logout")
@@ -328,19 +350,41 @@ class TestSetUserPassword(unittest.TestCase):
 
     def test_password_mismatch_returns_400(self):
         self._login_as_superuser()
+        csrf_token = self._get_password_form_csrf_token()
         resp = self.client.post(
             f"/admin/users/{self.target.id}/password",
-            data={"password": "newpassword1", "confirm_password": "different123"},
+            data={
+                "csrf_token": csrf_token,
+                "password": "newpassword1",
+                "confirm_password": "different123",
+            },
         )
         self.assertEqual(resp.status_code, 400)
+        self.assertIn(b"Passwords do not match.", resp.data)
 
     def test_short_password_returns_400(self):
         self._login_as_superuser()
+        csrf_token = self._get_password_form_csrf_token()
         resp = self.client.post(
             f"/admin/users/{self.target.id}/password",
-            data={"password": "short", "confirm_password": "short"},
+            data={
+                "csrf_token": csrf_token,
+                "password": "short",
+                "confirm_password": "short",
+            },
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_missing_csrf_token_rejected(self):
+        self._login_as_superuser()
+        resp = self.client.post(
+            f"/admin/users/{self.target.id}/password",
+            data={"password": "newpassword1", "confirm_password": "newpassword1"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        db.session.refresh(self.target)
+        self.assertTrue(self.target.check_password("oldpassword"))
 
     def test_post_blocked_for_non_superuser(self):
         self._login_as_plain()
@@ -362,9 +406,10 @@ class TestSetUserPassword(unittest.TestCase):
         self._login_as_superuser()
         su_id = self.superuser.id
         resp = self.client.get(
-            f"/admin/users/{su_id}/password", follow_redirects=False
+            f"/admin/users/{su_id}/password", follow_redirects=True
         )
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"You cannot set your own password from this screen.", resp.data)
 
     def test_cannot_post_own_password_via_this_route(self):
         self._login_as_superuser()
