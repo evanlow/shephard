@@ -67,7 +67,7 @@ class TestAttendanceCRUD(unittest.TestCase):
         db.session.add(group)
         db.session.flush()
 
-        event = Event(name="Test Event", date=datetime(2026, 6, 1, 10, 0), group_id=group.id)
+        event = Event(name="Test Event", date=datetime(2099, 6, 1, 10, 0), group_id=group.id)
         db.session.add(event)
 
         member = Member(name="Test Member", group_id=group.id)
