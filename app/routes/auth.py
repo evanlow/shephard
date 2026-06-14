@@ -1,11 +1,12 @@
 import io
+import secrets
 from datetime import datetime, timezone
 from functools import wraps
 
 import openpyxl
 from openpyxl.styles import Font
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import insert as sa_insert, text
 
@@ -23,6 +24,13 @@ bp = Blueprint("auth", __name__)
 # Expected structure constants used for both export validation and restore
 _MEMBERS_HEADERS = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"]
 _EVENT_META_LABELS = ["Event:", "Date:", "Group:", "Archived:"]
+_SET_USER_PASSWORD_CSRF_KEY = "set_user_password_csrf_token"
+
+
+def _issue_set_user_password_csrf_token() -> str:
+    token = secrets.token_urlsafe(32)
+    session[_SET_USER_PASSWORD_CSRF_KEY] = token
+    return token
 
 
 def admin_required(f):
@@ -146,6 +154,74 @@ def delete_user(user_id: int):
     db.session.delete(user)
     db.session.commit()
     flash(f"User '{user.username}' deleted.", "success")
+    return redirect(url_for("auth.list_users"))
+
+
+@bp.get("/admin/users/<int:user_id>/password")
+@superuser_required
+def user_password_form(user_id: int):
+    if user_id == current_user.id:
+        flash("You cannot set your own password from this screen.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    return render_template(
+        "auth/user_password_form.html",
+        csrf_token=_issue_set_user_password_csrf_token(),
+        target_user=user,
+    )
+
+
+@bp.post("/admin/users/<int:user_id>/password")
+@superuser_required
+def set_user_password(user_id: int):
+    if user_id == current_user.id:
+        flash("You cannot set your own password from this screen.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("auth.list_users"))
+
+    csrf_token = request.form.get("csrf_token", "")
+    expected_csrf_token = session.get(_SET_USER_PASSWORD_CSRF_KEY)
+    if (
+        not csrf_token
+        or not expected_csrf_token
+        or not secrets.compare_digest(csrf_token, expected_csrf_token)
+    ):
+        flash("Invalid form submission. Please try again.", "error")
+        return redirect(url_for("auth.user_password_form", user_id=user.id))
+
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    errors = []
+    if not password:
+        errors.append("Password is required.")
+    elif len(password) < 8:
+        errors.append("Password must be at least 8 characters.")
+    elif password != confirm:
+        errors.append("Passwords do not match.")
+
+    if errors:
+        for e in errors:
+            flash(e, "error")
+        return render_template(
+            "auth/user_password_form.html",
+            csrf_token=_issue_set_user_password_csrf_token(),
+            target_user=user,
+        ), 400
+
+    user.set_password(password)
+    db.session.commit()
+    session.pop(_SET_USER_PASSWORD_CSRF_KEY, None)
+    flash(f"Password updated for '{user.username}'.", "success")
     return redirect(url_for("auth.list_users"))
 
 
