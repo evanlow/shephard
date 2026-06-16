@@ -67,7 +67,15 @@ class EventService:
         db.session.add(event)
         db.session.flush()  # populate event.id before creating EventAdmin rows
         if allowed_admin_ids:
-            for uid in allowed_admin_ids:
+            seen: set[int] = set()
+            for raw_uid in allowed_admin_ids:
+                try:
+                    uid = int(raw_uid)
+                except (TypeError, ValueError):
+                    continue
+                if uid in seen:
+                    continue
+                seen.add(uid)
                 user = db.session.get(User, uid)
                 if user and user.is_admin and not user.is_superuser:
                     db.session.add(EventAdmin(event_id=event.id, user_id=uid, assigned_by=assigned_by))
@@ -99,7 +107,15 @@ class EventService:
             db.session.execute(
                 db.delete(EventAdmin).where(EventAdmin.event_id == event_id)
             )
-            for uid in allowed_admin_ids:
+            seen: set[int] = set()
+            for raw_uid in allowed_admin_ids:
+                try:
+                    uid = int(raw_uid)
+                except (TypeError, ValueError):
+                    continue
+                if uid in seen:
+                    continue
+                seen.add(uid)
                 user = db.session.get(User, uid)
                 if user and user.is_admin and not user.is_superuser:
                     db.session.add(EventAdmin(event_id=event_id, user_id=uid, assigned_by=assigned_by))
