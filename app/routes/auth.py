@@ -55,6 +55,27 @@ def superuser_required(f):
     return decorated
 
 
+def can_access_event(user, event) -> bool:
+    """Return True if the user is allowed to view/administer this event.
+
+    Superusers always have access.  Ordinary admins must have an explicit
+    row in event_admins.  All other users (including unauthenticated) are
+    denied.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    if not user.is_admin:
+        return False
+    from ..models.event_admin import EventAdmin
+    return db.session.execute(
+        db.select(EventAdmin)
+        .where(EventAdmin.event_id == event.id)
+        .where(EventAdmin.user_id == user.id)
+    ).scalar_one_or_none() is not None
+
+
 # ---------------------------------------------------------------------------
 # User management (superuser only)
 # ---------------------------------------------------------------------------
@@ -268,7 +289,7 @@ def dashboard():
 
     members = MemberService.get_all()
     groups = GroupService.get_all()
-    events = EventService.get_all()
+    events = EventService.get_for_user(current_user)
     recent_events = events[:5]
 
     return render_template(

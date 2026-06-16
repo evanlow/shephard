@@ -6,12 +6,15 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0">Events / Services</h2>
+  {% if current_user.is_superuser %}
   <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#addEventForm">
     + Add Event
   </button>
+  {% endif %}
 </div>
 
-<!-- Add event form -->
+{% if current_user.is_superuser %}
+<!-- Add event form (superusers only) -->
 <div class="collapse mb-4" id="addEventForm">
   <div class="card card-body">
     <h5 class="mb-3">Create New Event</h5>
@@ -46,9 +49,23 @@
           </button>
         </div>
       </div>
+      {% if assignable_admins %}
+      <div class="row g-3 mt-1">
+        <div class="col-md-10">
+          <label class="form-label">Assign Admins <span class="text-muted small">(optional)</span></label>
+          <select name="allowed_admin_ids" class="form-select" multiple size="4">
+            {% for u in assignable_admins %}
+            <option value="{{ u.id }}">{{ u.username }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text text-muted">Hold Ctrl/⌘ to select multiple admins.</div>
+        </div>
+      </div>
+      {% endif %}
     </form>
   </div>
 </div>
+{% endif %}
 
 <!-- Events table -->
 <div class="card">
@@ -80,8 +97,10 @@
           <td>
             <a href="{{ url_for('ui.attendance', event_id=e.id) }}"
                class="btn btn-sm btn-primary me-1">Take Attendance</a>
+            {% if current_user.is_superuser %}
             <a href="{{ url_for('ui.edit_event', event_id=e.id) }}"
                class="btn btn-sm btn-outline-primary me-1">Edit</a>
+            {% endif %}
             <a href="{{ url_for('ui.reports') }}?event_id={{ e.id }}"
                class="btn btn-sm btn-outline-secondary me-1">Report</a>
             {% if current_user.is_superuser %}
@@ -96,7 +115,11 @@
         {% else %}
         <tr>
           <td colspan="5" class="text-center text-muted py-4">
+            {% if not current_user.is_superuser %}
+            No events assigned to you yet. Please contact a superuser.
+            {% else %}
             No events yet. Click <strong>+ Add Event</strong> to get started.
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

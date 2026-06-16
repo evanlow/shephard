@@ -154,13 +154,13 @@ class TestAdminUserAccess(unittest.TestCase):
         resp = self.client.get("/api/events/")
         self.assertEqual(resp.status_code, 200)
 
-    def test_admin_can_create_event(self):
+    def test_admin_cannot_create_event(self):
         resp = self.client.post(
             "/api/events/",
             data=json.dumps({"name": "Sunday Service", "date": VALID_DATE, "group_id": self.group_id}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 403)
 
     def test_admin_can_list_attendance(self):
         resp = self.client.get("/api/attendance/")
