@@ -154,17 +154,19 @@ class TestAdminUserAccess(unittest.TestCase):
         resp = self.client.get("/api/events/")
         self.assertEqual(resp.status_code, 200)
 
-    def test_admin_can_create_event(self):
+    def test_admin_cannot_create_event(self):
         resp = self.client.post(
             "/api/events/",
             data=json.dumps({"name": "Sunday Service", "date": VALID_DATE, "group_id": self.group_id}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 403)
 
-    def test_admin_can_list_attendance(self):
+    def test_admin_can_list_attendance_for_assigned_events_only(self):
+        # An ordinary admin with no assigned events receives an empty list, not all records.
         resp = self.client.get("/api/attendance/")
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.data), [])
 
 
 class TestAdminCannotDeleteSuperuserOnlyResources(unittest.TestCase):
@@ -276,9 +278,13 @@ class TestMarkedByFieldRecorded(unittest.TestCase):
 
         event = Event(name="Test Event", date=datetime(2026, 6, 1, 10, 0), group_id=group.id)
         db.session.add(event)
+        db.session.flush()
 
         member = Member(name="Test Member", group_id=group.id)
         db.session.add(member)
+
+        from app.models.event_admin import EventAdmin
+        db.session.add(EventAdmin(event_id=event.id, user_id=self.admin.id))
 
         db.session.commit()
         self.event_id = event.id

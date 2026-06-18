@@ -23,12 +23,25 @@
         <input type="datetime-local" name="date" class="form-control"
                value="{{ event.date.strftime('%Y-%m-%dT%H:%M') }}" required />
       </div>
-      <div class="mb-4">
+      <div class="mb-3">
         <label class="form-label">Group</label>
         <input type="text" class="form-control"
                value="{{ event.group.name if event.group else '—' }}" disabled />
         <div class="form-text text-muted">Group cannot be changed after creation.</div>
       </div>
+      {% if assignable_admins %}
+      <div class="mb-4">
+        <label class="form-label">Assigned Admins</label>
+        <select name="allowed_admin_ids" class="form-select" multiple size="4">
+          {% for u in assignable_admins %}
+          <option value="{{ u.id }}" {% if u.id in assigned_admin_ids %}selected{% endif %}>
+            {{ u.username }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text text-muted">Hold Ctrl/⌘ to select multiple admins. Deselecting all removes all assignments.</div>
+      </div>
+      {% endif %}
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">Save Changes</button>
         <a href="{{ url_for('ui.events') }}" class="btn btn-outline-secondary">Cancel</a>

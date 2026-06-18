@@ -10,6 +10,7 @@ from .models.user import User
 from .models.member import Member
 from .models.group import Group
 from .models.membership import DEFAULT_GROUP_NAME
+from .models.event_admin import EventAdmin  # noqa: F401 — ensures table is registered
 from .services.group_service import GroupService
 from .routes import attendance, auth, events, groups, members, ui
 

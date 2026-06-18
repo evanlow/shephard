@@ -1,8 +1,9 @@
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
+from flask_login import current_user
 
-from ..routes.auth import admin_required, superuser_required
+from ..routes.auth import admin_required, can_access_event, superuser_required
 from ..services.event_service import EventService
 
 bp = Blueprint("events", __name__)
@@ -35,16 +36,18 @@ def list_events():
         archived = False
     else:
         archived = None
-    events = EventService.get_all(group_id=group_id, archived=archived)
+    events = EventService.get_for_user(current_user, group_id=group_id, archived=archived)
     return jsonify([_event_dict(e) for e in events])
 
 
 @bp.post("/")
+@superuser_required
 def create_event():
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     date_str = data.get("date")
     group_id = data.get("group_id")
+    allowed_admin_ids = data.get("allowed_admin_ids") or []
 
     if not name:
         return jsonify({"error": "name is required"}), 400
@@ -58,7 +61,13 @@ def create_event():
     except ValueError:
         return jsonify({"error": "date must be a valid ISO 8601 string"}), 400
 
-    event, error = EventService.create(name=name, date=date, group_id=group_id)
+    event, error = EventService.create(
+        name=name,
+        date=date,
+        group_id=group_id,
+        allowed_admin_ids=allowed_admin_ids or None,
+        assigned_by=current_user.id,
+    )
     if error:
         return jsonify({"error": error}), 400
 
@@ -70,10 +79,13 @@ def get_event(event_id: int):
     event = EventService.get_by_id(event_id)
     if not event:
         return jsonify({"error": "Event not found"}), 404
+    if not can_access_event(current_user, event):
+        return jsonify({"error": "Not authorized for this event"}), 403
     return jsonify(_event_dict(event))
 
 
 @bp.put("/<int:event_id>")
+@superuser_required
 def update_event(event_id: int):
     data = request.get_json(silent=True) or {}
     name = None
@@ -91,10 +103,18 @@ def update_event(event_id: int):
         except ValueError:
             return jsonify({"error": "date must be a valid ISO 8601 string"}), 400
 
-    if name is None and date is None:
+    allowed_admin_ids = data.get("allowed_admin_ids")
+
+    if name is None and date is None and allowed_admin_ids is None:
         return jsonify({"error": "provide name and/or date"}), 400
 
-    event, error = EventService.update(event_id, name=name, date=date)
+    event, error = EventService.update(
+        event_id,
+        name=name,
+        date=date,
+        allowed_admin_ids=allowed_admin_ids,
+        assigned_by=current_user.id,
+    )
     if error == EventService.ERROR_EVENT_NOT_FOUND:
         return jsonify({"error": error}), 404
     if error == EventService.ERROR_EVENT_ARCHIVED:

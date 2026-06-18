@@ -21,7 +21,8 @@ from ..models.attendance import Attendance
 from ..models.group import Group
 from ..models.member import Member
 from ..models.membership import member_groups
-from ..routes.auth import admin_required, superuser_required
+from ..models.user import User
+from ..routes.auth import admin_required, can_access_event, superuser_required
 from ..services.attendance_service import AttendanceService
 from ..services.event_service import EventService
 from ..services.group_service import GroupService
@@ -283,18 +284,34 @@ def delete_group(group_id: int):
 @bp.get("/events")
 @admin_required
 def events():
-    all_events = EventService.get_all()
-    archived_events = EventService.get_all(archived=True)
+    all_events = EventService.get_for_user(current_user)
+    archived_events = EventService.get_for_user(current_user, archived=True) if current_user.is_superuser else []
     all_groups = GroupService.get_all()
-    return render_template("ui/events.html", events=all_events, archived_events=archived_events, groups=all_groups)
+    assignable_admins = (
+        db.session.execute(
+            db.select(User)
+            .where(User.is_admin.is_(True))
+            .where(User.is_superuser.is_(False))
+            .order_by(User.username)
+        ).scalars().all()
+        if current_user.is_superuser else []
+    )
+    return render_template(
+        "ui/events.html",
+        events=all_events,
+        archived_events=archived_events,
+        groups=all_groups,
+        assignable_admins=assignable_admins,
+    )
 
 
 @bp.post("/events")
-@admin_required
+@superuser_required
 def create_event():
     name = request.form.get("name", "").strip()
     date_str = request.form.get("date", "").strip()
     group_id = request.form.get("group_id") or None
+    allowed_admin_ids = request.form.getlist("allowed_admin_ids")
 
     errors = []
     if not name:
@@ -315,7 +332,13 @@ def create_event():
         flash("Invalid date/time format.", "error")
         return redirect(url_for("ui.events"))
 
-    event, error = EventService.create(name=name, date=date, group_id=int(group_id))
+    event, error = EventService.create(
+        name=name,
+        date=date,
+        group_id=int(group_id),
+        allowed_admin_ids=allowed_admin_ids or None,
+        assigned_by=current_user.id,
+    )
     if error:
         flash(error, "error")
     else:
@@ -362,21 +385,34 @@ def unarchive_event_ui(event_id: int):
 
 
 @bp.get("/events/<int:event_id>/edit")
-@admin_required
+@superuser_required
 def edit_event(event_id: int):
     event = EventService.get_by_id(event_id)
     if not event:
         flash("Event not found.", "error")
         return redirect(url_for("ui.events"))
-    return render_template("ui/event_edit.html", event=event)
+    assignable_admins = db.session.execute(
+        db.select(User)
+        .where(User.is_admin.is_(True))
+        .where(User.is_superuser.is_(False))
+        .order_by(User.username)
+    ).scalars().all()
+    assigned_admin_ids = {u.id for u in EventService.get_assigned_admins(event_id)}
+    return render_template(
+        "ui/event_edit.html",
+        event=event,
+        assignable_admins=assignable_admins,
+        assigned_admin_ids=assigned_admin_ids,
+    )
 
 
 @bp.post("/events/<int:event_id>/edit")
-@admin_required
+@superuser_required
 def update_event(event_id: int):
     name = request.form.get("name", "").strip() or None
     date_str = request.form.get("date", "").strip()
     date = None
+    allowed_admin_ids = request.form.getlist("allowed_admin_ids")
 
     if not name:
         flash("Event name is required.", "error")
@@ -392,7 +428,13 @@ def update_event(event_id: int):
         flash("Date and time are required.", "error")
         return redirect(url_for("ui.edit_event", event_id=event_id))
 
-    event, error = EventService.update(event_id, name=name, date=date)
+    event, error = EventService.update(
+        event_id,
+        name=name,
+        date=date,
+        allowed_admin_ids=allowed_admin_ids,
+        assigned_by=current_user.id,
+    )
     if error == EventService.ERROR_EVENT_NOT_FOUND:
         flash("Event not found.", "error")
         return redirect(url_for("ui.events"))
@@ -414,6 +456,10 @@ def attendance(event_id: int):
     event = EventService.get_by_id(event_id)
     if not event:
         flash("Event not found.", "error")
+        return redirect(url_for("ui.events"))
+
+    if not can_access_event(current_user, event):
+        flash("You are not authorised to access this event.", "error")
         return redirect(url_for("ui.events"))
 
     group = GroupService.get_by_id(event.group_id)
@@ -457,6 +503,10 @@ def attendance(event_id: int):
 @bp.post("/events/<int:event_id>/attendance/mark")
 @admin_required
 def mark_present(event_id: int):
+    event = EventService.get_by_id(event_id)
+    if not event or not can_access_event(current_user, event):
+        flash("You are not authorised to access this event.", "error")
+        return redirect(url_for("ui.events"))
     member_id = request.form.get("member_id", type=int)
     if not member_id:
         flash("Member ID is required.", "error")
@@ -480,6 +530,10 @@ def mark_present(event_id: int):
 @bp.post("/events/<int:event_id>/attendance/unmark")
 @admin_required
 def mark_absent(event_id: int):
+    event = EventService.get_by_id(event_id)
+    if not event or not can_access_event(current_user, event):
+        flash("You are not authorised to access this event.", "error")
+        return redirect(url_for("ui.events"))
     member_id = request.form.get("member_id", type=int)
     if not member_id:
         flash("Member ID is required.", "error")
@@ -500,6 +554,8 @@ def attendance_quick_add(event_id: int):
     event = EventService.get_by_id(event_id)
     if not event:
         return jsonify({"error": "Event not found"}), 404
+    if not can_access_event(current_user, event):
+        return jsonify({"error": "Not authorized for this event"}), 403
 
     payload = request.get_json(silent=True) or {}
     name = payload.get("name", "").strip()
@@ -542,6 +598,11 @@ def attendance_quick_add(event_id: int):
 @bp.get("/events/<int:event_id>/attendance/pdf")
 @admin_required
 def attendance_pdf(event_id: int):
+    event = EventService.get_by_id(event_id)
+    if event and not can_access_event(current_user, event):
+        flash("You are not authorised to access this event.", "error")
+        return redirect(url_for("ui.events"))
+
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -644,13 +705,14 @@ def attendance_pdf(event_id: int):
 @bp.get("/reports")
 @admin_required
 def reports():
-    all_events = EventService.get_all()
+    all_events = EventService.get_for_user(current_user)
     event_id = request.args.get("event_id", type=int)
     status = None
     selected_event = None
     if event_id:
-        selected_event = EventService.get_by_id(event_id)
-        if selected_event:
+        candidate = EventService.get_by_id(event_id)
+        if candidate and can_access_event(current_user, candidate):
+            selected_event = candidate
             status, _ = AttendanceService.get_event_status(event_id)
     return render_template(
         "ui/reports.html",
