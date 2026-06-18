@@ -311,7 +311,7 @@ def create_event():
     name = request.form.get("name", "").strip()
     date_str = request.form.get("date", "").strip()
     group_id = request.form.get("group_id") or None
-    allowed_admin_ids = [int(x) for x in request.form.getlist("allowed_admin_ids") if x]
+    allowed_admin_ids = request.form.getlist("allowed_admin_ids")
 
     errors = []
     if not name:
@@ -412,7 +412,7 @@ def update_event(event_id: int):
     name = request.form.get("name", "").strip() or None
     date_str = request.form.get("date", "").strip()
     date = None
-    allowed_admin_ids = [int(x) for x in request.form.getlist("allowed_admin_ids") if x]
+    allowed_admin_ids = request.form.getlist("allowed_admin_ids")
 
     if not name:
         flash("Event name is required.", "error")

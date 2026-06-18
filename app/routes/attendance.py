@@ -77,7 +77,13 @@ def record_attendance():
     if not member_id:
         return jsonify({"error": "member_id is required"}), 400
 
-    event = db.session.get(Event, int(event_id))
+    try:
+        event_id = int(event_id)
+        member_id = int(member_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "event_id and member_id must be integers"}), 400
+
+    event = db.session.get(Event, event_id)
     if not event:
         return jsonify({"error": f"Event {event_id} not found"}), 400
     if not can_access_event(current_user, event):
