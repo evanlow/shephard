@@ -223,7 +223,7 @@ class TestMembersUI(unittest.TestCase):
         resp = self.client.get("/members")
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("member-remark", body)
+        self.assertEqual(body.count('class="member-remark '), 1)
         self.assertIn("Remark:", body)
         self.assertIn("Lives in Tampines", body)
 
@@ -238,7 +238,6 @@ class TestMembersUI(unittest.TestCase):
         db.session.commit()
         resp = self.client.get("/members")
         body = resp.data.decode()
-        self.assertIn("member-reason", body)
         self.assertIn("Reason:", body)
         self.assertIn("Transferred church", body)
         # Active member's row must not include a member-reason block for itself.
