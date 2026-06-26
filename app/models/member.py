@@ -18,6 +18,12 @@ class Member(db.Model):
     # NULL = active. Non-null = last day of membership (stored as 23:59:59 so
     # events on that calendar day still include the member; events after do not).
     deactivated_at = db.Column(db.DateTime, nullable=True)
+    # Free-text admin note (e.g. to disambiguate members with the same name).
+    # Editable by admins at any time. Persists across deactivate/reactivate cycles.
+    remarks = db.Column(db.String(500), nullable=True)
+    # Reason recorded at the point of deactivation. Required when deactivating.
+    # Cleared on reactivation.
+    deactivation_reason = db.Column(db.String(500), nullable=True)
 
     group = db.relationship("Group", foreign_keys=[group_id], back_populates="primary_members")
     groups = db.relationship("Group", secondary=member_groups, back_populates="members", order_by="Group.name")

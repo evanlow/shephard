@@ -33,6 +33,12 @@
         <div class="col-sm-3 d-flex align-items-end">
           <button type="submit" class="btn btn-success w-100">Add Member</button>
         </div>
+        <div class="col-12">
+          <label class="form-label">Remarks <span class="text-muted small">(optional)</span></label>
+          <input type="text" name="remarks" class="form-control" maxlength="500"
+                 placeholder="e.g. Husband of Mary, joined via Cell A" />
+          <div class="form-text">Free-text admin note. Useful to disambiguate members with similar names.</div>
+        </div>
       </div>
     </form>
   </div>
@@ -67,7 +73,12 @@
         <tr class="{{ '' if is_active else 'text-muted inactive-row' }}"
             data-active="{{ 'true' if is_active else 'false' }}">
           <td class="text-muted small">{{ loop.index }}</td>
-          <td class="member-name fw-semibold {{ '' if is_active else 'text-decoration-line-through' }}">{{ m.name }}</td>
+          <td class="member-name fw-semibold {{ '' if is_active else 'text-decoration-line-through' }}">
+            {{ m.name }}
+            {% if m.remarks %}
+              <div class="text-muted small fst-italic">{{ m.remarks }}</div>
+            {% endif %}
+          </td>
           <td>
             {% for g in m.groups %}
               <span class="badge {{ 'bg-warning text-dark' if g.name == default_group.name else 'bg-info text-dark' }}">{{ g.name }}</span>
@@ -82,6 +93,9 @@
             {% else %}
               <span class="badge bg-secondary">Inactive</span>
               <div class="text-muted small">from {{ m.deactivated_at.strftime('%d %b %Y') }}</div>
+              {% if m.deactivation_reason %}
+                <div class="text-muted small">Reason: {{ m.deactivation_reason }}</div>
+              {% endif %}
             {% endif %}
           </td>
           <td>
@@ -117,6 +131,15 @@
               <span class="fw-semibold small">Last active day for {{ m.name }}:</span>
               <input type="date" name="deactivated_at" value="{{ today }}"
                      class="form-control form-control-sm" style="width: 170px;" required />
+              <input type="text" name="deactivation_reason"
+                     class="form-control form-control-sm" style="min-width: 240px;"
+                     list="deact-reasons-{{ m.id }}" maxlength="500"
+                     placeholder="Reason (required)" required />
+              <datalist id="deact-reasons-{{ m.id }}">
+                {% for s in deactivation_reason_suggestions %}
+                  <option value="{{ s }}"></option>
+                {% endfor %}
+              </datalist>
               <button type="submit" class="btn btn-danger btn-sm">Confirm</button>
               <button type="button" class="btn btn-outline-secondary btn-sm"
                       data-bs-toggle="collapse"

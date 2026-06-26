@@ -959,6 +959,96 @@ class TestRestore(unittest.TestCase):
         group_names = [g.name for g in alice.groups]
         self.assertIn(DEFAULT_GROUP_NAME, group_names)
 
+    # --- remarks / deactivation_reason export-restore round-trip ---
+
+    def _seed_with_remarks_and_export(self):
+        """Seed members with remarks and a deactivated member, then export."""
+        from app.models.member import Member
+        from app.services.group_service import GroupService
+        from datetime import datetime
+        GroupService.get_default_group()
+        active = Member(name="Active Remarked", remarks="Husband of Mary")
+        inactive = Member(
+            name="Inactive Member",
+            remarks="Long-time member",
+            deactivated_at=datetime(2026, 5, 31, 23, 59, 59),
+            deactivation_reason="Moved overseas",
+        )
+        db.session.add_all([active, inactive])
+        db.session.commit()
+        resp = self.client.get("/admin/export")
+        self.assertEqual(resp.status_code, 200)
+        return resp.data
+
+    def test_export_includes_remarks_and_deactivation_reason_columns(self):
+        import io as _io
+        import openpyxl
+        self._login_as_superuser()
+        xlsx_bytes = self._seed_with_remarks_and_export()
+        wb = openpyxl.load_workbook(_io.BytesIO(xlsx_bytes))
+        ws = wb["Members"]
+        headers = [ws.cell(row=1, column=c).value for c in range(1, 10)]
+        self.assertEqual(headers[7], "Remarks")
+        self.assertEqual(headers[8], "Deactivation Reason")
+        # Inactive Member row should contain the values
+        found = False
+        for r in range(2, ws.max_row + 1):
+            if ws.cell(row=r, column=2).value == "Inactive Member":
+                self.assertEqual(ws.cell(row=r, column=8).value, "Long-time member")
+                self.assertEqual(ws.cell(row=r, column=9).value, "Moved overseas")
+                found = True
+        self.assertTrue(found)
+
+    def test_restore_round_trips_remarks_and_deactivation_reason(self):
+        from app.models.member import Member
+        self._login_as_superuser()
+        xlsx_bytes = self._seed_with_remarks_and_export()
+        # Purge and restore
+        self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        data = {"backup": (io.BytesIO(xlsx_bytes), "export.xlsx")}
+        self.client.post("/admin/restore",
+                         data=data, content_type="multipart/form-data")
+        restored = db.session.execute(
+            db.select(Member).where(Member.name == "Inactive Member")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.remarks, "Long-time member")
+        self.assertEqual(restored.deactivation_reason, "Moved overseas")
+        self.assertIsNotNone(restored.deactivated_at)
+        active = db.session.execute(
+            db.select(Member).where(Member.name == "Active Remarked")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(active)
+        self.assertEqual(active.remarks, "Husband of Mary")
+        self.assertIsNone(active.deactivated_at)
+
+    def test_restore_accepts_legacy_7_column_export(self):
+        """Older backups without remarks/deactivation_reason columns are accepted."""
+        import io as _io
+        import openpyxl
+        from app.models.member import Member
+        self._login_as_superuser()
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Members"
+        ws.append(["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"])
+        ws.append([1, "Legacy Member", "—", "ALL MEMBERS", "Active", "01 Jan 2024", ""])
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        data = {"backup": (buf, "export.xlsx")}
+        resp = self.client.post("/admin/restore",
+                                data=data, content_type="multipart/form-data",
+                                follow_redirects=True)
+        self.assertIn(b"Restore complete", resp.data)
+        m = db.session.execute(
+            db.select(Member).where(Member.name == "Legacy Member")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(m)
+        self.assertIsNone(m.remarks)
+        self.assertIsNone(m.deactivation_reason)
+
 
 if __name__ == "__main__":
     unittest.main()

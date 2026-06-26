@@ -287,6 +287,64 @@ class TestMembersCRUD(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    # ------------------------------------------------------------------
+    # Remarks
+    # ------------------------------------------------------------------
+
+    def test_create_member_with_remarks(self):
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Remarked", "remarks": "Husband of Mary"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = json.loads(resp.data)
+        self.assertEqual(data["remarks"], "Husband of Mary")
+
+    def test_list_members_response_includes_remarks_and_reason(self):
+        self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "Listed", "remarks": "note"}),
+            content_type="application/json",
+        )
+        resp = self.client.get("/api/members/")
+        data = json.loads(resp.data)
+        self.assertIn("remarks", data[0])
+        self.assertIn("deactivation_reason", data[0])
+        self.assertIn("deactivated_at", data[0])
+
+    def test_update_member_can_set_and_clear_remarks(self):
+        create_resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "RemarkEdit"}),
+            content_type="application/json",
+        )
+        member_id = json.loads(create_resp.data)["id"]
+
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"remarks": "added"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.data)["remarks"], "added")
+
+        resp = self.client.put(
+            f"/api/members/{member_id}",
+            data=json.dumps({"remarks": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(json.loads(resp.data)["remarks"])
+
+    def test_create_member_with_too_long_remarks_returns_400(self):
+        resp = self.client.post(
+            "/api/members/",
+            data=json.dumps({"name": "TooLong", "remarks": "x" * 501}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

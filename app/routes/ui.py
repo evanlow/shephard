@@ -42,12 +42,14 @@ def members():
     default_group = GroupService.get_default_group()
     all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
     today = datetime.now().strftime("%Y-%m-%d")
+    from ..services.member_remarks import DEACTIVATION_REASON_SUGGESTIONS
     return render_template(
         "ui/members.html",
         members=all_members,
         groups=all_groups,
         default_group=default_group,
         today=today,
+        deactivation_reason_suggestions=DEACTIVATION_REASON_SUGGESTIONS,
     )
 
 
@@ -57,6 +59,7 @@ def create_member():
     name = request.form.get("name", "").strip()
     group_id = request.form.get("group_id") or None
     group_ids = [int(group_id) for group_id in request.form.getlist("group_ids") if group_id]
+    remarks = request.form.get("remarks", "").strip() or None
     if group_id:
         try:
             group_id = int(group_id)
@@ -67,7 +70,9 @@ def create_member():
         flash("Member name is required.", "error")
         return redirect(url_for("ui.members"))
 
-    member, error = MemberService.create(name=name, group_id=group_id, group_ids=group_ids)
+    member, error = MemberService.create(
+        name=name, group_id=group_id, group_ids=group_ids, remarks=remarks,
+    )
     if error:
         flash(error, "error")
     else:
@@ -85,7 +90,15 @@ def edit_member(member_id: int):
     default_group = GroupService.get_default_group()
     all_groups = [group for group in GroupService.get_all() if group.id != default_group.id]
     today = datetime.now().strftime("%Y-%m-%d")
-    return render_template("ui/member_edit.html", member=member, groups=all_groups, default_group=default_group, today=today)
+    from ..services.member_remarks import DEACTIVATION_REASON_SUGGESTIONS
+    return render_template(
+        "ui/member_edit.html",
+        member=member,
+        groups=all_groups,
+        default_group=default_group,
+        today=today,
+        deactivation_reason_suggestions=DEACTIVATION_REASON_SUGGESTIONS,
+    )
 
 
 @bp.post("/members/<int:member_id>/edit")
@@ -96,6 +109,9 @@ def update_member(member_id: int):
     group_id = int(raw_group) if raw_group and raw_group != "0" else None
     group_ids = [int(group_id) for group_id in request.form.getlist("group_ids") if group_id]
     groups_provided = raw_group is not None or bool(request.form.getlist("group_ids"))
+
+    remarks_provided = "remarks" in request.form
+    remarks = request.form.get("remarks", "").strip() if remarks_provided else None
 
     member_since_str = request.form.get("member_since", "").strip()
     member_since = None
@@ -112,6 +128,8 @@ def update_member(member_id: int):
         group_id=group_id,
         group_ids=group_ids,
         groups_provided=groups_provided,
+        remarks=remarks,
+        remarks_provided=remarks_provided,
     )
     if error == "Member not found":
         flash("Member not found.", "error")
@@ -153,9 +171,13 @@ def delete_member(member_id: int):
 def deactivate_member(member_id: int):
     """Mark a member as inactive from a given date (their last active day)."""
     date_str = request.form.get("deactivated_at", "").strip()
+    reason = request.form.get("deactivation_reason", "").strip()
     if not date_str:
         flash("Deactivation date is required.", "error")
         return redirect(url_for("ui.members"))
+    if not reason:
+        flash("Deactivation reason is required.", "error")
+        return redirect(url_for("ui.edit_member", member_id=member_id))
     try:
         # Store as end-of-day so events on that calendar day still include the member.
         deactivated_at = datetime.strptime(date_str, "%Y-%m-%d").replace(
@@ -165,7 +187,7 @@ def deactivate_member(member_id: int):
         flash("Invalid date format.", "error")
         return redirect(url_for("ui.members"))
 
-    member, error = MemberService.deactivate(member_id, deactivated_at)
+    member, error = MemberService.deactivate(member_id, deactivated_at, deactivation_reason=reason)
     if error:
         flash(error, "error")
     else:

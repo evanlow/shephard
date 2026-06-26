@@ -22,7 +22,7 @@ from ..services.attendance_service import AttendanceService
 bp = Blueprint("auth", __name__)
 
 # Expected structure constants used for both export validation and restore
-_MEMBERS_HEADERS = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"]
+_MEMBERS_HEADERS = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
 _EVENT_META_LABELS = ["Event:", "Date:", "Group:", "Archived:"]
 _SET_USER_PASSWORD_CSRF_KEY = "set_user_password_csrf_token"
 
@@ -411,7 +411,7 @@ def export_all():
     ws = wb.active
     ws.title = "Members"
 
-    header = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"]
+    header = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
     ws.append(header)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -423,10 +423,10 @@ def export_all():
         status = "Inactive" if m.deactivated_at else "Active"
         since = m.created_at.strftime("%d %b %Y") if m.created_at else "—"
         deactivated = m.deactivated_at.strftime("%d %b %Y") if m.deactivated_at else ""
-        ws.append([i, m.name, primary, all_groups, status, since, deactivated])
+        ws.append([i, m.name, primary, all_groups, status, since, deactivated, m.remarks or "", m.deactivation_reason or ""])
 
     # Set column widths
-    for col, width in zip("ABCDEFG", [5, 30, 20, 40, 12, 15, 15]):
+    for col, width in zip("ABCDEFGHI", [5, 30, 20, 40, 12, 15, 15, 40, 30]):
         ws.column_dimensions[col].width = width
 
     # ── One sheet per event (oldest first) ───────────────────────────────────
@@ -517,12 +517,18 @@ def _parse_restore_date(value):
 
 
 def _validate_export_workbook(wb):
-    """Return an error string if the workbook doesn't match the export format, else None."""
+    """Return an error string if the workbook doesn't match the export format, else None.
+
+    Older backups (pre-remarks) had 7 header columns; current backups have 9.
+    Both are accepted for forwards/backwards compatibility.
+    """
     if not wb.sheetnames or wb.sheetnames[0] != "Members":
         return "Invalid file: first sheet must be named 'Members'."
     ws = wb["Members"]
-    actual_headers = [ws.cell(row=1, column=c).value for c in range(1, 8)]
-    if actual_headers != _MEMBERS_HEADERS:
+    legacy_headers = _MEMBERS_HEADERS[:7]
+    actual_7 = [ws.cell(row=1, column=c).value for c in range(1, 8)]
+    actual_9 = [ws.cell(row=1, column=c).value for c in range(1, 10)]
+    if actual_9 != _MEMBERS_HEADERS and actual_7 != legacy_headers:
         return "Invalid file: 'Members' sheet has unexpected column headers."
     for sheet_name in wb.sheetnames[1:]:
         ws_ev = wb[sheet_name]
@@ -585,7 +591,10 @@ def _import_workbook(wb):
     for row in ws_members.iter_rows(min_row=2, values_only=True):
         if row[0] is None:
             break
-        _, name, primary_group_name, all_groups_str, _status, member_since_str, deactivated_str = row
+        # Support both legacy (7 cols) and current (9 cols) export formats.
+        _, name, primary_group_name, all_groups_str, _status, member_since_str, deactivated_str = row[:7]
+        remarks_val = row[7] if len(row) > 7 else None
+        deact_reason_val = row[8] if len(row) > 8 else None
         if not name:
             continue
 
@@ -602,6 +611,9 @@ def _import_workbook(wb):
         primary_group = group_map.get(pname) if pname and pname != "—" else None
         group_id = primary_group.id if primary_group and pname != DEFAULT_GROUP_NAME else None
 
+        remarks_clean = str(remarks_val).strip() if remarks_val else None
+        deact_reason_clean = str(deact_reason_val).strip() if deact_reason_val else None
+
         # Core INSERT → ORM after_insert event does NOT fire
         result = db.session.execute(
             sa_insert(Member.__table__).values(
@@ -609,6 +621,8 @@ def _import_workbook(wb):
                 group_id=group_id,
                 created_at=created_at,
                 deactivated_at=deactivated_at,
+                remarks=remarks_clean or None,
+                deactivation_reason=deact_reason_clean or None,
             ).returning(Member.__table__.c.id)
         )
         member_id = result.scalar()
