@@ -4,6 +4,19 @@
 {% block nav_members %}active{% endblock %}
 
 {% block content %}
+<style>
+  /* Truncate long Remark / Reason text to 2 lines; full text shown in tooltip */
+  .member-name-cell { max-width: 24rem; }
+  .member-remark, .member-reason {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+    line-height: 1.25;
+  }
+</style>
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0">Members</h2>
   <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#addMemberForm">
@@ -73,10 +86,19 @@
         <tr class="{{ '' if is_active else 'text-muted inactive-row' }}"
             data-active="{{ 'true' if is_active else 'false' }}">
           <td class="text-muted small">{{ loop.index }}</td>
-          <td class="member-name fw-semibold {{ '' if is_active else 'text-decoration-line-through' }}">
-            {{ m.name }}
+          <td class="member-name-cell">
+            <div class="member-name fw-semibold {{ '' if is_active else 'text-decoration-line-through' }}">
+              {{ m.name }}
+            </div>
             {% if m.remarks %}
-              <div class="text-muted small fst-italic">{{ m.remarks }}</div>
+              <div class="member-remark text-muted small fst-italic" title="Remark: {{ m.remarks }}">
+                <span class="fw-semibold">Remark:</span> {{ m.remarks }}
+              </div>
+            {% endif %}
+            {% if not is_active and m.deactivation_reason %}
+              <div class="member-reason small text-danger-emphasis" title="Reason: {{ m.deactivation_reason }}">
+                <span class="fw-semibold">Reason:</span> {{ m.deactivation_reason }}
+              </div>
             {% endif %}
           </td>
           <td>
@@ -93,9 +115,6 @@
             {% else %}
               <span class="badge bg-secondary">Inactive</span>
               <div class="text-muted small">from {{ m.deactivated_at.strftime('%d %b %Y') }}</div>
-              {% if m.deactivation_reason %}
-                <div class="text-muted small">Reason: {{ m.deactivation_reason }}</div>
-              {% endif %}
             {% endif %}
           </td>
           <td>
