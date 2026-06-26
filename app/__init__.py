@@ -92,6 +92,14 @@ def _ensure_sqlite_schema_compatibility() -> None:
                 conn.execute(
                     text("ALTER TABLE members ADD COLUMN deactivated_at DATETIME")
                 )
+            if "remarks" not in member_columns:
+                conn.execute(
+                    text("ALTER TABLE members ADD COLUMN remarks VARCHAR(500)")
+                )
+            if "deactivation_reason" not in member_columns:
+                conn.execute(
+                    text("ALTER TABLE members ADD COLUMN deactivation_reason VARCHAR(500)")
+                )
             if "group_id" not in member_columns:
                 conn.execute(
                     text("ALTER TABLE members ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL")

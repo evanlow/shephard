@@ -295,6 +295,19 @@ Configure these in your `.env` file (copied from `.env.example`).
 
 > For production deployments, also set `FLASK_ENV=production` and ensure `SECRET_KEY` is a strong random value.
 
+### 10.1 Schema upgrades (PostgreSQL)
+
+`flask init-db` / `db.create_all()` only creates **missing tables**; it does **not** add new columns to existing tables. The SQLite compatibility shim in `app/__init__.py` returns immediately on non-SQLite engines, so PostgreSQL/RDS deployments must apply additive schema changes by hand (or via your migration tool of choice). Run the appropriate `ALTER TABLE` statements against the production database **before** rolling out the new code.
+
+For the current release (member remarks + deactivation reason), connect to the database with `psql` and run:
+
+```sql
+ALTER TABLE members ADD COLUMN IF NOT EXISTS remarks VARCHAR(500);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS deactivation_reason VARCHAR(500);
+```
+
+Both columns are nullable, so the statements are safe to run against a populated database and are idempotent. Without them, any member query that touches these fields will fail with `UndefinedColumn`.
+
 ---
 
 ## 11. URL Reference

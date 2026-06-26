@@ -172,38 +172,57 @@ class TestMemberService(unittest.TestCase):
         from datetime import datetime
         member, _ = MemberService.create(name="Leaver")
         cutoff = datetime(2026, 5, 31, 23, 59, 59)
-        updated, error = MemberService.deactivate(member.id, cutoff)
+        updated, error = MemberService.deactivate(member.id, cutoff, deactivation_reason="Moved overseas")
         self.assertIsNone(error)
         self.assertIsNotNone(updated.deactivated_at)
+        self.assertEqual(updated.deactivation_reason, "Moved overseas")
+
+    def test_deactivate_requires_reason(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="No Reason")
+        cutoff = datetime(2026, 5, 31, 23, 59, 59)
+        _, error = MemberService.deactivate(member.id, cutoff)
+        self.assertEqual(error, "Deactivation reason is required")
+        _, error = MemberService.deactivate(member.id, cutoff, deactivation_reason="   ")
+        self.assertEqual(error, "Deactivation reason is required")
 
     def test_deactivate_already_inactive_returns_error(self):
         from datetime import datetime
         member, _ = MemberService.create(name="Gone")
-        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
-        _, error = MemberService.deactivate(member.id, datetime(2026, 6, 30, 23, 59, 59))
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59), deactivation_reason="Moved")
+        _, error = MemberService.deactivate(member.id, datetime(2026, 6, 30, 23, 59, 59), deactivation_reason="Moved")
         self.assertIsNotNone(error)
 
     def test_deactivate_unknown_member_returns_error(self):
         from datetime import datetime
-        _, error = MemberService.deactivate(9999, datetime(2026, 5, 31, 23, 59, 59))
+        _, error = MemberService.deactivate(9999, datetime(2026, 5, 31, 23, 59, 59), deactivation_reason="Moved")
         self.assertIsNotNone(error)
 
     def test_reactivate_clears_deactivated_at(self):
         from datetime import datetime
         member, _ = MemberService.create(name="Returning")
-        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59), deactivation_reason="Moved")
         updated, error = MemberService.reactivate(member.id, datetime(2026, 9, 1))
         self.assertIsNone(error)
         db.session.expire(updated)
         refreshed = MemberService.get_by_id(member.id)
         self.assertIsNone(refreshed.deactivated_at)
+        self.assertIsNone(refreshed.deactivation_reason)
+
+    def test_reactivate_preserves_remarks(self):
+        from datetime import datetime
+        member, _ = MemberService.create(name="Notes Kept", remarks="Husband of Mary")
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59), deactivation_reason="Moved")
+        MemberService.reactivate(member.id, datetime(2026, 9, 1))
+        refreshed = MemberService.get_by_id(member.id)
+        self.assertEqual(refreshed.remarks, "Husband of Mary")
 
     def test_reactivate_updates_joined_at_to_rejoin_date(self):
         from datetime import datetime
         from app.extensions import db as _db
         from app.models.membership import member_groups as mg
         member, _ = MemberService.create(name="Coming Back")
-        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59))
+        MemberService.deactivate(member.id, datetime(2026, 5, 31, 23, 59, 59), deactivation_reason="Moved")
         rejoin = datetime(2026, 9, 1)
         MemberService.reactivate(member.id, rejoin)
         rows = _db.session.execute(
@@ -222,6 +241,35 @@ class TestMemberService(unittest.TestCase):
         from datetime import datetime
         _, error = MemberService.reactivate(9999, datetime(2026, 9, 1))
         self.assertIsNotNone(error)
+
+    # ------------------------------------------------------------------
+    # Remarks
+    # ------------------------------------------------------------------
+
+    def test_create_with_remarks_persists(self):
+        member, error = MemberService.create(name="Noted", remarks="  Long-time member  ")
+        self.assertIsNone(error)
+        self.assertEqual(member.remarks, "Long-time member")
+
+    def test_create_with_blank_remarks_stores_none(self):
+        member, _ = MemberService.create(name="No Remark", remarks="   ")
+        self.assertIsNone(member.remarks)
+
+    def test_create_with_too_long_remarks_returns_error(self):
+        member, error = MemberService.create(name="Too Long", remarks="x" * 501)
+        self.assertIsNone(member)
+        self.assertIn("characters", error)
+
+    def test_update_remarks(self):
+        member, _ = MemberService.create(name="Edit Me", remarks="initial")
+        updated, error = MemberService.update(member.id, remarks="updated", remarks_provided=True)
+        self.assertIsNone(error)
+        self.assertEqual(updated.remarks, "updated")
+
+    def test_update_can_clear_remarks(self):
+        member, _ = MemberService.create(name="Clear Me", remarks="initial")
+        updated, _ = MemberService.update(member.id, remarks="", remarks_provided=True)
+        self.assertIsNone(updated.remarks)
 
 
 if __name__ == "__main__":

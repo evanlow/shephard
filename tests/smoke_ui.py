@@ -179,12 +179,13 @@ class TestMembersUI(unittest.TestCase):
         db.session.commit()
         resp = self.client.post(
             f"/members/{member.id}/deactivate",
-            data={"deactivated_at": "2026-06-30"},
+            data={"deactivated_at": "2026-06-30", "deactivation_reason": "Moved overseas"},
         )
         self.assertEqual(resp.status_code, 302)
         db.session.expire_all()
         updated = db.session.get(Member, member.id)
         self.assertIsNotNone(updated.deactivated_at)
+        self.assertEqual(updated.deactivation_reason, "Moved overseas")
 
     def test_deactivate_missing_date_redirects(self):
         member = Member(name="No Date")

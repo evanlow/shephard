@@ -698,7 +698,7 @@ class TestExport(unittest.TestCase):
         resp = self.client.get("/admin/export")
         wb = openpyxl.load_workbook(io.BytesIO(resp.data))
         ws = wb["Members"]
-        names = [ws.cell(row=r, column=2).value for r in range(2, ws.max_row + 1)]
+        names = [ws.cell(row=r, column=3).value for r in range(2, ws.max_row + 1)]
         self.assertIn("Alice", names)
 
     def test_export_has_event_sheet(self):
@@ -958,6 +958,208 @@ class TestRestore(unittest.TestCase):
         self.assertIsNotNone(alice)
         group_names = [g.name for g in alice.groups]
         self.assertIn(DEFAULT_GROUP_NAME, group_names)
+
+    # --- remarks / deactivation_reason export-restore round-trip ---
+
+    def _seed_with_remarks_and_export(self):
+        """Seed members with remarks and a deactivated member, then export."""
+        from app.models.member import Member
+        from app.services.group_service import GroupService
+        from datetime import datetime
+        GroupService.get_default_group()
+        active = Member(name="Active Remarked", remarks="Husband of Mary")
+        inactive = Member(
+            name="Inactive Member",
+            remarks="Long-time member",
+            deactivated_at=datetime(2026, 5, 31, 23, 59, 59),
+            deactivation_reason="Moved overseas",
+        )
+        db.session.add_all([active, inactive])
+        db.session.commit()
+        resp = self.client.get("/admin/export")
+        self.assertEqual(resp.status_code, 200)
+        return resp.data
+
+    def test_export_includes_remarks_and_deactivation_reason_columns(self):
+        import io as _io
+        import openpyxl
+        self._login_as_superuser()
+        xlsx_bytes = self._seed_with_remarks_and_export()
+        wb = openpyxl.load_workbook(_io.BytesIO(xlsx_bytes))
+        ws = wb["Members"]
+        headers = [ws.cell(row=1, column=c).value for c in range(1, 11)]
+        # Current 10-column header: Remarks / Deactivation Reason are last.
+        self.assertEqual(headers[1], "Member ID")
+        self.assertEqual(headers[8], "Remarks")
+        self.assertEqual(headers[9], "Deactivation Reason")
+        # Inactive Member row should contain the values
+        found = False
+        for r in range(2, ws.max_row + 1):
+            if ws.cell(row=r, column=3).value == "Inactive Member":
+                self.assertEqual(ws.cell(row=r, column=9).value, "Long-time member")
+                self.assertEqual(ws.cell(row=r, column=10).value, "Moved overseas")
+                found = True
+        self.assertTrue(found)
+
+    def test_restore_round_trips_remarks_and_deactivation_reason(self):
+        from app.models.member import Member
+        self._login_as_superuser()
+        xlsx_bytes = self._seed_with_remarks_and_export()
+        # Purge and restore
+        self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        data = {"backup": (io.BytesIO(xlsx_bytes), "export.xlsx")}
+        self.client.post("/admin/restore",
+                         data=data, content_type="multipart/form-data")
+        restored = db.session.execute(
+            db.select(Member).where(Member.name == "Inactive Member")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.remarks, "Long-time member")
+        self.assertEqual(restored.deactivation_reason, "Moved overseas")
+        self.assertIsNotNone(restored.deactivated_at)
+        active = db.session.execute(
+            db.select(Member).where(Member.name == "Active Remarked")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(active)
+        self.assertEqual(active.remarks, "Husband of Mary")
+        self.assertIsNone(active.deactivated_at)
+
+    def test_restore_accepts_legacy_7_column_export(self):
+        """Older backups without remarks/deactivation_reason columns are accepted."""
+        import io as _io
+        import openpyxl
+        from app.models.member import Member
+        self._login_as_superuser()
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Members"
+        ws.append(["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"])
+        ws.append([1, "Legacy Member", "—", "ALL MEMBERS", "Active", "01 Jan 2024", ""])
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        data = {"backup": (buf, "export.xlsx")}
+        resp = self.client.post("/admin/restore",
+                                data=data, content_type="multipart/form-data",
+                                follow_redirects=True)
+        self.assertIn(b"Restore complete", resp.data)
+        m = db.session.execute(
+            db.select(Member).where(Member.name == "Legacy Member")
+        ).scalar_one_or_none()
+        self.assertIsNotNone(m)
+        self.assertIsNone(m.remarks)
+        self.assertIsNone(m.deactivation_reason)
+
+    def test_restore_round_trips_duplicate_named_members(self):
+        """Two members with the same name + one shared event must restore without
+        violating the (event_id, member_id) unique constraint. Verifies that
+        attendance is keyed by exported Member ID, not member name."""
+        from app.models.member import Member
+        from app.models.group import Group
+        from app.models.event import Event
+        from app.models.attendance import Attendance
+        from app.services.group_service import GroupService
+        from datetime import datetime
+        self._login_as_superuser()
+
+        # Seed: two members named "John Tan" (different remarks), one shared event.
+        GroupService.get_default_group()
+        group = Group(name="Choir")
+        db.session.add(group)
+        db.session.commit()
+        john1 = Member(name="John Tan", remarks="son of Mary")
+        john2 = Member(name="John Tan", remarks="son of Jane")
+        db.session.add_all([john1, john2])
+        db.session.commit()
+        john1.groups.append(group)
+        john2.groups.append(group)
+        db.session.commit()
+        event = Event(name="Sunday Service", date=datetime(2030, 1, 1, 10, 0), group_id=group.id)
+        db.session.add(event)
+        db.session.commit()
+        db.session.add_all([
+            Attendance(event_id=event.id, member_id=john1.id, present=True),
+            Attendance(event_id=event.id, member_id=john2.id, present=False),
+        ])
+        db.session.commit()
+
+        # Export, purge everything, restore.
+        xlsx_bytes = self.client.get("/admin/export").data
+        self.client.post("/admin/purge/attendance", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/members", data={"confirm": "PURGE"})
+        self.client.post("/admin/purge/events", data={"confirm": "PURGE"})
+        resp = self.client.post(
+            "/admin/restore",
+            data={"backup": (io.BytesIO(xlsx_bytes), "export.xlsx")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertIn(b"Restore complete", resp.data)
+
+        # Both members and both attendance rows must be present, each mapped to
+        # the correct restored member (cross-checked via remarks).
+        restored = db.session.execute(
+            db.select(Member).where(Member.name == "John Tan").order_by(Member.id)
+        ).scalars().all()
+        self.assertEqual(len(restored), 2)
+        remarks_to_member = {m.remarks: m for m in restored}
+        self.assertIn("son of Mary", remarks_to_member)
+        self.assertIn("son of Jane", remarks_to_member)
+
+        ev = db.session.execute(db.select(Event)).scalar_one()
+        atts = db.session.execute(
+            db.select(Attendance).where(Attendance.event_id == ev.id)
+        ).scalars().all()
+        self.assertEqual(len(atts), 2)
+        by_member = {a.member_id: a.present for a in atts}
+        self.assertTrue(by_member[remarks_to_member["son of Mary"].id])
+        self.assertFalse(by_member[remarks_to_member["son of Jane"].id])
+
+    def test_restore_legacy_3_column_attendance_still_works(self):
+        """Backups exported before the Member ID column was added used a
+        3-column attendance sheet keyed by name; that path must still work."""
+        import io as _io
+        import openpyxl
+        from app.models.member import Member
+        from app.models.event import Event
+        from app.models.attendance import Attendance
+        self._login_as_superuser()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Members"
+        ws.append(["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated"])
+        ws.append([1, "Alice", "—", "ALL MEMBERS, Choir", "Active", "01 Jan 2024", ""])
+
+        ws_ev = wb.create_sheet(title="01Jan30 Sunday")
+        ws_ev.append(["Event:", "Sunday Service"])
+        ws_ev.append(["Date:", "01 Jan 2030"])
+        ws_ev.append(["Group:", "Choir"])
+        ws_ev.append(["Archived:", "No"])
+        ws_ev.append([])
+        ws_ev.append(["#", "Name", "Present"])  # legacy 3-col attendance header
+        ws_ev.append([1, "Alice", "Yes"])
+
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        resp = self.client.post(
+            "/admin/restore",
+            data={"backup": (buf, "legacy.xlsx")},
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertIn(b"Restore complete", resp.data)
+        alice = db.session.execute(
+            db.select(Member).where(Member.name == "Alice")
+        ).scalar_one()
+        ev = db.session.execute(db.select(Event)).scalar_one()
+        att = db.session.execute(
+            db.select(Attendance).where(Attendance.event_id == ev.id,
+                                        Attendance.member_id == alice.id)
+        ).scalar_one()
+        self.assertTrue(att.present)
 
 
 if __name__ == "__main__":
