@@ -21,8 +21,17 @@ from ..services.attendance_service import AttendanceService
 
 bp = Blueprint("auth", __name__)
 
-# Expected structure constants used for both export validation and restore
-_MEMBERS_HEADERS = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
+# Expected structure constants used for both export validation and restore.
+#
+# The Members sheet header has evolved over time. Restore accepts all three
+# variants for forwards/backwards compatibility:
+#   - 7 cols (legacy, pre-remarks)
+#   - 9 cols (added Remarks + Deactivation Reason)
+#   - 10 cols (current, adds Member ID so duplicate-named members can be
+#     unambiguously referenced from event attendance sheets)
+_MEMBERS_HEADERS = ["#", "Member ID", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
+_MEMBERS_HEADERS_V9 = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
+_MEMBERS_HEADERS_V7 = _MEMBERS_HEADERS_V9[:7]
 _EVENT_META_LABELS = ["Event:", "Date:", "Group:", "Archived:"]
 _SET_USER_PASSWORD_CSRF_KEY = "set_user_password_csrf_token"
 
@@ -411,7 +420,7 @@ def export_all():
     ws = wb.active
     ws.title = "Members"
 
-    header = ["#", "Name", "Primary Group", "All Groups", "Status", "Member Since", "Deactivated", "Remarks", "Deactivation Reason"]
+    header = list(_MEMBERS_HEADERS)
     ws.append(header)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -423,10 +432,10 @@ def export_all():
         status = "Inactive" if m.deactivated_at else "Active"
         since = m.created_at.strftime("%d %b %Y") if m.created_at else "—"
         deactivated = m.deactivated_at.strftime("%d %b %Y") if m.deactivated_at else ""
-        ws.append([i, m.name, primary, all_groups, status, since, deactivated, m.remarks or "", m.deactivation_reason or ""])
+        ws.append([i, m.id, m.name, primary, all_groups, status, since, deactivated, m.remarks or "", m.deactivation_reason or ""])
 
     # Set column widths
-    for col, width in zip("ABCDEFGHI", [5, 30, 20, 40, 12, 15, 15, 40, 30]):
+    for col, width in zip("ABCDEFGHIJ", [5, 10, 30, 20, 40, 12, 15, 15, 40, 30]):
         ws.column_dimensions[col].width = width
 
     # ── One sheet per event (oldest first) ───────────────────────────────────
@@ -463,7 +472,7 @@ def export_all():
 
         # Attendance table header
         att_header_row = ws_ev.max_row + 1
-        ws_ev.append(["#", "Name", "Present"])
+        ws_ev.append(["#", "Member ID", "Name", "Present"])
         for cell in ws_ev[att_header_row]:
             cell.font = Font(bold=True)
 
@@ -473,20 +482,21 @@ def export_all():
             present_ids = {m["id"] for m in status_data["present_members"]}
             for j, m_data in enumerate(status_data["expected_members"], 1):
                 present = "Yes" if m_data["id"] in present_ids else "No"
-                ws_ev.append([j, m_data["name"], present])
+                ws_ev.append([j, m_data["id"], m_data["name"], present])
             ws_ev.append([])
-            ws_ev.append(["", "Present:", status_data["present_count"]])
-            ws_ev.append(["", "Absent:", status_data["absent_count"]])
-            ws_ev.append(["", "Total:", status_data["expected_count"]])
-            for row in ws_ev.iter_rows(min_row=ws_ev.max_row - 2, max_row=ws_ev.max_row, min_col=2, max_col=2):
+            ws_ev.append(["", "", "Present:", status_data["present_count"]])
+            ws_ev.append(["", "", "Absent:", status_data["absent_count"]])
+            ws_ev.append(["", "", "Total:", status_data["expected_count"]])
+            for row in ws_ev.iter_rows(min_row=ws_ev.max_row - 2, max_row=ws_ev.max_row, min_col=3, max_col=3):
                 for cell in row:
                     cell.font = Font(bold=True)
         else:
-            ws_ev.append(["", "(No eligible members for this event)", ""])
+            ws_ev.append(["", "", "(No eligible members for this event)", ""])
 
         ws_ev.column_dimensions["A"].width = 5
-        ws_ev.column_dimensions["B"].width = 30
-        ws_ev.column_dimensions["C"].width = 10
+        ws_ev.column_dimensions["B"].width = 10
+        ws_ev.column_dimensions["C"].width = 30
+        ws_ev.column_dimensions["D"].width = 10
 
     # ── Stream to response ───────────────────────────────────────────────────
     buf = io.BytesIO()
@@ -519,16 +529,20 @@ def _parse_restore_date(value):
 def _validate_export_workbook(wb):
     """Return an error string if the workbook doesn't match the export format, else None.
 
-    Older backups (pre-remarks) had 7 header columns; current backups have 9.
-    Both are accepted for forwards/backwards compatibility.
+    Three Members sheet variants are accepted (oldest → newest):
+      - 7 cols  (legacy, pre-remarks)
+      - 9 cols  (legacy, with Remarks + Deactivation Reason)
+      - 10 cols (current, with Member ID)
     """
     if not wb.sheetnames or wb.sheetnames[0] != "Members":
         return "Invalid file: first sheet must be named 'Members'."
     ws = wb["Members"]
-    legacy_headers = _MEMBERS_HEADERS[:7]
-    actual_7 = [ws.cell(row=1, column=c).value for c in range(1, 8)]
-    actual_9 = [ws.cell(row=1, column=c).value for c in range(1, 10)]
-    if actual_9 != _MEMBERS_HEADERS and actual_7 != legacy_headers:
+    actual_7  = [ws.cell(row=1, column=c).value for c in range(1, 8)]
+    actual_9  = [ws.cell(row=1, column=c).value for c in range(1, 10)]
+    actual_10 = [ws.cell(row=1, column=c).value for c in range(1, 11)]
+    if (actual_10 != _MEMBERS_HEADERS
+            and actual_9 != _MEMBERS_HEADERS_V9
+            and actual_7 != _MEMBERS_HEADERS_V7):
         return "Invalid file: 'Members' sheet has unexpected column headers."
     for sheet_name in wb.sheetnames[1:]:
         ws_ev = wb[sheet_name]
@@ -549,13 +563,43 @@ def _import_workbook(wb):
 
     ws_members = wb["Members"]
 
+    # Detect the Members sheet variant. When the second column is "Member ID"
+    # we have the current 10-column layout, which lets us remap attendance
+    # rows by exported member ID (handles duplicate names correctly).
+    members_has_id_col = ws_members.cell(row=1, column=2).value == "Member ID"
+
+    def _members_row(row):
+        """Normalise a Members data row across the 7/9/10-column variants.
+
+        Returns (export_id, name, primary_group_name, all_groups_str,
+                 member_since_str, deactivated_str, remarks_val, deact_reason_val).
+        export_id is None for legacy formats without a Member ID column.
+        """
+        if members_has_id_col:
+            export_id = row[1]
+            name = row[2]
+            primary_group_name = row[3]
+            all_groups_str = row[4]
+            member_since_str = row[6]
+            deactivated_str = row[7]
+            remarks_val = row[8] if len(row) > 8 else None
+            deact_reason_val = row[9] if len(row) > 9 else None
+        else:
+            export_id = None
+            _, name, primary_group_name, all_groups_str, _status, member_since_str, deactivated_str = row[:7]
+            remarks_val = row[7] if len(row) > 7 else None
+            deact_reason_val = row[8] if len(row) > 8 else None
+        return (export_id, name, primary_group_name, all_groups_str,
+                member_since_str, deactivated_str, remarks_val, deact_reason_val)
+
     # ── Step 1: Collect every group name referenced anywhere in the file ──────
     all_group_names = set()
     for row in ws_members.iter_rows(min_row=2, values_only=True):
         if row[0] is None:
             break
-        if row[3]:
-            for g in str(row[3]).split(","):
+        _eid, _name, _pgn, all_groups_str, _ms, _de, _rv, _drv = _members_row(row)
+        if all_groups_str:
+            for g in str(all_groups_str).split(","):
                 g = g.strip()
                 if g:
                     all_group_names.add(g)
@@ -585,16 +629,15 @@ def _import_workbook(wb):
 
     # ── Step 3: Import members via Core INSERT (bypasses ORM listener so we
     #            can set created_at and joined_at to their original values) ─────
-    member_map = {}   # member name → member_id  (first occurrence wins)
+    member_map = {}             # member name → member_id  (first occurrence wins; legacy fallback)
+    export_id_map = {}          # exported member id (int) → new member_id (current format)
     members_created = 0
 
     for row in ws_members.iter_rows(min_row=2, values_only=True):
         if row[0] is None:
             break
-        # Support both legacy (7 cols) and current (9 cols) export formats.
-        _, name, primary_group_name, all_groups_str, _status, member_since_str, deactivated_str = row[:7]
-        remarks_val = row[7] if len(row) > 7 else None
-        deact_reason_val = row[8] if len(row) > 8 else None
+        (export_id, name, primary_group_name, all_groups_str,
+         member_since_str, deactivated_str, remarks_val, deact_reason_val) = _members_row(row)
         if not name:
             continue
 
@@ -650,6 +693,11 @@ def _import_workbook(wb):
 
         if name not in member_map:
             member_map[name] = member_id
+        if export_id is not None:
+            try:
+                export_id_map[int(export_id)] = member_id
+            except (TypeError, ValueError):
+                pass
         members_created += 1
 
     # ── Step 4: Import events and attendance ──────────────────────────────────
@@ -678,20 +726,43 @@ def _import_workbook(wb):
         db.session.flush()
         events_created += 1
 
+        # Detect attendance sheet layout. Current format has a "Member ID"
+        # column at B in the header row (row 6); legacy 3-column sheets do
+        # not, in which case we fall back to name-based lookup.
+        att_has_id_col = ws_ev.cell(row=6, column=2).value == "Member ID"
+
         # Attendance rows begin at row 7 (rows 1-4 meta, row 5 blank, row 6 header)
+        seen_member_ids = set()  # guard against (event_id, member_id) unique constraint
         for r in range(7, ws_ev.max_row + 1):
-            num_val     = ws_ev.cell(row=r, column=1).value
-            name_val    = ws_ev.cell(row=r, column=2).value
-            present_val = ws_ev.cell(row=r, column=3).value
+            num_val = ws_ev.cell(row=r, column=1).value
             # Accept int or float (Google Sheets / Excel round-trips convert ints to floats)
             is_row_index = isinstance(num_val, (int, float)) and not isinstance(num_val, bool)
             if not is_row_index:
                 break   # blank row or summary section
-            if not name_val:
+
+            mid = None
+            if att_has_id_col:
+                id_val = ws_ev.cell(row=r, column=2).value
+                name_val = ws_ev.cell(row=r, column=3).value
+                present_val = ws_ev.cell(row=r, column=4).value
+                if id_val is not None:
+                    try:
+                        mid = export_id_map.get(int(id_val))
+                    except (TypeError, ValueError):
+                        mid = None
+                # Fall back to name lookup if the exported ID wasn't in the
+                # Members sheet (e.g. hand-edited backup).
+                if mid is None and name_val:
+                    mid = member_map.get(str(name_val).strip())
+            else:
+                name_val = ws_ev.cell(row=r, column=2).value
+                present_val = ws_ev.cell(row=r, column=3).value
+                if name_val:
+                    mid = member_map.get(str(name_val).strip())
+
+            if mid is None or mid in seen_member_ids:
                 continue
-            mid = member_map.get(str(name_val).strip())
-            if mid is None:
-                continue
+            seen_member_ids.add(mid)
             present = str(present_val).strip().lower() == "yes" if present_val else False
             db.session.add(Attendance(event_id=event.id, member_id=mid, present=present))
             attendance_created += 1
