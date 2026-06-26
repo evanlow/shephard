@@ -215,6 +215,37 @@ class TestMembersUI(unittest.TestCase):
         updated = db.session.get(Member, member.id)
         self.assertIsNone(updated.deactivated_at)
 
+    def test_members_page_shows_remark_with_label(self):
+        """Active members with remarks should render a labeled Remark: line under the name."""
+        member = Member(name="Same Name", remarks="Lives in Tampines")
+        db.session.add(member)
+        db.session.commit()
+        resp = self.client.get("/members")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn("member-remark", body)
+        self.assertIn("Remark:", body)
+        self.assertIn("Lives in Tampines", body)
+
+    def test_members_page_shows_reason_for_inactive_only(self):
+        """Inactive members render a Reason: line; active members do not."""
+        from datetime import datetime as dt
+        active = Member(name="Active Person", remarks="active remark")
+        inactive = Member(name="Gone Person", remarks="known volunteer")
+        inactive.deactivated_at = dt(2026, 5, 31, 23, 59, 59)
+        inactive.deactivation_reason = "Transferred church"
+        db.session.add_all([active, inactive])
+        db.session.commit()
+        resp = self.client.get("/members")
+        body = resp.data.decode()
+        self.assertIn("member-reason", body)
+        self.assertIn("Reason:", body)
+        self.assertIn("Transferred church", body)
+        # Active member's row must not include a member-reason block for itself.
+        # The class only renders when (not is_active) and deactivation_reason — so
+        # count of member-reason occurrences equals number of inactive members with reasons.
+        self.assertEqual(body.count('class="member-reason'), 1)
+
     def test_reactivate_missing_date_redirects(self):
         from datetime import datetime as dt
         member = Member(name="Still Gone")
