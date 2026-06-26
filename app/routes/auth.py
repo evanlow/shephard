@@ -703,6 +703,7 @@ def _import_workbook(wb):
     # ── Step 4: Import events and attendance ──────────────────────────────────
     events_created = 0
     attendance_created = 0
+    attendance_skipped = 0
 
     for sheet_name in wb.sheetnames[1:]:
         ws_ev = wb[sheet_name]
@@ -761,6 +762,7 @@ def _import_workbook(wb):
                     mid = member_map.get(str(name_val).strip())
 
             if mid is None or mid in seen_member_ids:
+                attendance_skipped += 1
                 continue
             seen_member_ids.add(mid)
             present = str(present_val).strip().lower() == "yes" if present_val else False
@@ -773,6 +775,7 @@ def _import_workbook(wb):
         "members": members_created,
         "events": events_created,
         "attendance": attendance_created,
+        "attendance_skipped": attendance_skipped,
     }
 
 
@@ -827,4 +830,11 @@ def restore_upload():
         f"{summary['attendance']} attendance record{'s' if summary['attendance'] != 1 else ''}",
     ]
     flash(f"Restore complete: {', '.join(parts)} imported.", "success")
+    skipped = summary.get("attendance_skipped", 0)
+    if skipped:
+        flash(
+            f"{skipped} attendance row{'s' if skipped != 1 else ''} could not be matched to a "
+            "known member and were skipped. The backup may be incomplete.",
+            "warning",
+        )
     return redirect(url_for("auth.restore_page"))

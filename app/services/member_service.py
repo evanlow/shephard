@@ -10,7 +10,7 @@ from .group_service import GroupService
 from .member_remarks import REMARKS_MAX_LENGTH
 
 
-def _normalize_remarks(value) -> tuple[str | None, str | None]:
+def _normalize_remarks(value, field_name: str = "Remarks") -> tuple[str | None, str | None]:
     """Return (normalized_value, error). None means "not provided / cleared"."""
     if value is None:
         return None, None
@@ -18,7 +18,7 @@ def _normalize_remarks(value) -> tuple[str | None, str | None]:
     if not text:
         return None, None
     if len(text) > REMARKS_MAX_LENGTH:
-        return None, f"Remarks must be {REMARKS_MAX_LENGTH} characters or fewer"
+        return None, f"{field_name} must be {REMARKS_MAX_LENGTH} characters or fewer"
     return text, None
 
 
@@ -149,7 +149,7 @@ class MemberService:
         if member.deactivated_at is not None:
             return None, "Member is already inactive"
 
-        normalized_reason, reason_error = _normalize_remarks(deactivation_reason)
+        normalized_reason, reason_error = _normalize_remarks(deactivation_reason, "Deactivation reason")
         if reason_error:
             return None, reason_error
         if not normalized_reason:
